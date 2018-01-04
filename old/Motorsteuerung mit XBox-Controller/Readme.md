@@ -3,39 +3,43 @@ Skript zur grundlegenden Steuerung des Autos mit dem XBox 360 Wireless Controlle
 -------- INSTALLATION ------------------------------------
 
 "xboxdrv" installieren:
+
 	sudo apt-get install xboxdrv
 
 Testen ob Treiber korrekt installiert ist:
+
 	sudo xboxdrv --detach-kernel-driver
 
 	... Mehr siehe https://github.com/FRC4564/Xbox ...
 
-Falls notwendig: "python3-rpi.gpio"-Paket installieren (ist standardmäßig nur für Python2 installiert?):
+Falls notwendig: "python3-rpi.gpio"-Paket installieren (ist standardmÃ¤ÃŸig nur fÃ¼r Python2 installiert?):
+
 	sudo apt install python3-rpi.gpio
 	
 
 -------- START -------------------------------------------
 
-Skript.py auf dem Raspberry Pi mit root-Rechten starten:
-	sudo python3 Skript.py
+Start.py auf dem Raspberry Pi mit root-Rechten starten:
+
+	sudo python3 Start.py
 
 ------- STEUERUNG ----------------------------------------
 
 Beschleunigung:				rechter Trigger
-Rückwärts:				linker Trigger
+RÃ¼ckwÃ¤rts:				linker Trigger
 Lenkung:				linker Analogstick
-Bremsen (Motor "kurzschließen"): 	B
+Bremsen (Motor "kurzschlieÃŸen"): 	B
 Skript Beenden:				"Strg" + C oder "Start" und "Back"
 
 
 
 -------- BEIM BEARBEITEN BEACHTEN! -----------------------
 
-Bei Python müssen die Einrückungen einheitlich vorgenommen werden, entweder mit Leerzeichen oder mit Tabs! Ansonsten kommt bei der Ausführung eine Fehlermeldung.
+Bei Python mÃ¼ssen die EinrÃ¼ckungen einheitlich vorgenommen werden, entweder mit Leerzeichen oder mit Tabs! Ansonsten kommt bei der AusfÃ¼hrung eine Fehlermeldung.
 
-Im Skript.py sind die Einrückungen mit Tabs realisiert.
+Im Skript.py sind die EinrÃ¼ckungen mit Tabs realisiert.
 
-Um zu überprüfen ob die Einrückungen einheitlich sind, können bei Notepad++ unter "Ansicht", "Nicht druckbare Zeichen" Leerzeichen und Tabulatoren angezeigt werden.
+Um zu Ã¼berprÃ¼fen ob die EinrÃ¼ckungen einheitlich sind, kÃ¶nnen bei Notepad++ unter "Ansicht", "Nicht druckbare Zeichen" Leerzeichen und Tabulatoren angezeigt werden.
 
 ------- QUELLEN ------------------------------------------
 
