@@ -44,6 +44,7 @@ Um zu überprüfen ob die Einrückungen einheitlich sind, können bei Notepad++ 
 ------- QUELLEN ------------------------------------------
 
 https://sourceforge.net/p/raspberry-gpio-python/wiki/PWM/
+
 https://github.com/FRC4564/Xbox
 
 
