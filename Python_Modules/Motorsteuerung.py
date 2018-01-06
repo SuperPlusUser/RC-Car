@@ -4,35 +4,24 @@
 # - http://abyz.me.uk/rpi/pigpio/python.html
 
 ## TODO:
-# - Exception Handling, z.B. out-of-range Werte für speed abfangen...
-# - Bools als Rückgabewerte?
+# - Resourcen beim Beenden des Skripts freigeben!
 
 import pigpio           # Verwendung: http://abyz.me.uk/rpi/pigpio/python.html#set_servo_pulsewidth
 
-## Parameter:
+## --- Variablen-Definitionen ---
 
-freq = 50                  # PWM-Frequenz
-range = 100             # PWM-Range
+PWM_FREQ = 50               # PWM-Frequenz
+PWM_RANGE = 100             # Dutycycle-Range
+# (siehe http://abyz.me.uk/rpi/pigpio/python.html#set_PWM_range)
 
 ## Portdefinition:
 
-en = 17                 # Hauptmotor
+EN = 17                 # Hauptmotor
 
-in1 = 27                # Motor Forwaerts: 0
-in2 = 22                # Motor Forwaerts: 1
+IN1 = 27                # Motor Forwaerts: 0
+IN2 = 22                # Motor Forwaerts: 1
 
-
-
-## Initialisierungen:
-
-v = pigpio.pi()          # pigpiod muss im Hintergrund laufen!
-v.set_mode(en, pigpio.OUTPUT)
-v.set_mode(in1, pigpio.OUTPUT)
-v.set_mode(in2, pigpio.OUTPUT)
-
-# PWM Einstellungen für en übernehmen:
-v.set_PWM_frequency(en, freq)
-v.set_PWM_range(en, range)
+## ------------------------------
 
 
 ## Funktionsdefinitionen:
@@ -40,34 +29,79 @@ v.set_PWM_range(en, range)
 # Hauptmotor:
 
 def forward(speed):
-    v.write(in1, 0)
-    v.write(in2, 1)
-    v.set_PWM_dutycycle(en,speed)
+    if speed >= 0 and speed <= PWM_RANGE:
+        v.write(IN1, 0)
+        v.write(IN2, 1)
+        ret = v.set_PWM_dutycycle(EN,speed)
+        if(ret): # Wenn ein Rückgabewert außer 0 zurück geliefert wird, ist ein Fehler aufgetreten.
+            print("pigpio failed to set dutycycle with errorcode {}".format(ret))
+            return False
+        else:
+            return True
+    else:
+        print("ERROR: speed out of range")
+        return False
 
 def backward(speed):
-    v.write(in1, 1)
-    v.write(in2, 0)
-    v.set_PWM_dutycycle(en,speed)
+    if speed >= 0 and speed <= PWM_RANGE:
+        v.write(IN1, 1)
+        v.write(IN2, 0)
+        ret = v.set_PWM_dutycycle(EN,speed)
+        if(ret): # Wenn ein Rückgabewert außer 0 zurück geliefert wird, ist ein Fehler aufgetreten.
+            print("pigpio failed to set dutycycle with errorcode {}".format(ret))
+            return False
+        else:
+            return True   
+    else:
+        print("ERROR: speed out of range")
+        return False
 
 def roll():
-    v.set_PWM_dutycycle(en,0)
+    ret = v.set_PWM_dutycycle(EN,0)
+    if(ret): # Wenn ein Rückgabewert außer 0 zurück geliefert wird, ist ein Fehler aufgetreten.
+        print("pigpio failed to set dutycycle with errorcode {}".format(ret))
+        return False
+    else:
+        return True 
 
 def brake():
-    v.write(in1, 1)
-    v.write(in2, 1)
-    v.set_PWM_dutycycle(en,100)
+    v.write(IN1, 1)
+    v.write(IN2, 1)
+    ret = v.set_PWM_dutycycle(EN,PWM_RANGE)
+    if(ret): # Wenn ein Rückgabewert außer 0 zurück geliefert wird, ist ein Fehler aufgetreten.
+        print("pigpio failed to set dutycycle with errorcode {}".format(ret))
+        return False
+    else:
+        return True 
         
 def drive(speed):
     if speed < 0:
-        backward(0-speed)
+        return backward(0-speed)
     elif speed == 0:
-        roll()   
+        return roll()
     else:
-        forward(speed)
+        return forward(speed)
         
 setSpeed = drive
         
 def getDC():
-    return v.get_PWM_dutycycle(en)
+    return v.get_PWM_dutycycle(EN)
 
 getSpeed = getDC
+
+
+## Initialisierungen:
+
+v = pigpio.pi()          # pigpiod muss im Hintergrund laufen!
+v.set_mode(EN, pigpio.OUTPUT)
+v.set_mode(IN1, pigpio.OUTPUT)
+v.set_mode(IN2, pigpio.OUTPUT)
+
+# PWM Einstellungen für en übernehmen:
+v.set_PWM_frequency(EN, PWM_FREQ)
+v.set_PWM_range(EN, PWM_RANGE)
+
+pigpio.exceptions = False
+# Erlaubt es, Fehler von pigpiod anhand des Rückgabewerts zu behandeln
+# (wenn kein Fehler auftritt ist der Rückgabewert 0.
+# Falls z.B. ein Übergabe-Parameter außerhalb des erlaubten Bereichs ist -8)
