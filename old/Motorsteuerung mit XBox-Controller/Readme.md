@@ -25,11 +25,15 @@ Start.py auf dem Raspberry Pi mit root-Rechten starten:
 
 ------- STEUERUNG ----------------------------------------
 
-Beschleunigung:				rechter Trigger
-Rückwärts:				linker Trigger
-Lenkung:				linker Analogstick
-Bremsen (Motor "kurzschließen"): 	B
-Skript Beenden:				"Strg" + C oder "Start" und "Back"
+Beschleunigung:                         rechter Trigger
+
+Rückwärts:                              linker Trigger
+
+Lenkung:                                linker Analogstick
+
+Bremsen (Motor "kurzschließen"):        B
+
+Skript Beenden:	                        "Strg" + C oder "Start" und "Back"
 
 
 
