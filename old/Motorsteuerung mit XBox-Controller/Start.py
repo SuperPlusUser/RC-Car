@@ -47,13 +47,14 @@ try:
         joy = xbox.Joystick()
 
 except IOError:
-        print("konnte keine Verbindung zum XBox-Dongle herstellen... Versuche neu zu verbinden...")
+        print("Could not connect to xbox wireless dongle. Trying again...")
         while not (joy):
+                # Starte ein Skript, welches "xboxdrv" neu startet (Hilft bei Verbindungsproblemen):
                 subprocess.run(dir+"/detach_xboxdrv.sh")
                 try:
                         joy = xbox.Joystick()
-                except:
-                        print("Erneut fehlgeschlagen. Versuche erneut...")
+                except IOError:
+                        print("Connection failed! Trying again...")
 
 
 ## Funktionsdefinitionen:
@@ -145,7 +146,7 @@ try:
 
 
                 else:
-                        print(" Connection to Controller lost. trying to reconnect...")
+                        print(" Connection to controller lost. trying to reconnect...")
 
                         while not joy.connected():
                                 time.sleep(1)
