@@ -3,14 +3,11 @@
 ## Quellen:
 # - http://abyz.me.uk/rpi/pigpio/python.html
 
-## TODO:
-# - Resourcen beim Beenden des Skripts freigeben!
-
 import pigpio           # Verwendung: http://abyz.me.uk/rpi/pigpio/python.html#set_servo_pulsewidth
 
 ## --- Variablen-Definitionen ---
 
-PWM_FREQ = 50               # PWM-Frequenz
+PWM_FREQ = 25               # PWM-Frequenz
 PWM_RANGE = 100             # Dutycycle-Range
 # (siehe http://abyz.me.uk/rpi/pigpio/python.html#set_PWM_range)
 
@@ -88,6 +85,13 @@ def getDC():
     return v.get_PWM_dutycycle(EN)
 
 getSpeed = getDC
+
+def close():
+    """
+    Gibt verwendete Ressourcen frei. Beim Beenden des Skripts ausführen!
+    """
+    roll()
+    return v.stop()
 
 
 ## Initialisierungen:

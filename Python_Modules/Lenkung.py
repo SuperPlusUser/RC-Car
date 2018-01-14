@@ -4,9 +4,6 @@
 # - http://abyz.me.uk/rpi/pigpio/index.html
 # - https://github.com/joan2937/pigpio
 
-## TODO:
-# - Resourcen beim Beenden des Skripts freigeben!
-
 import pigpio
 # Verwendung: http://abyz.me.uk/rpi/pigpio/python.html#set_servo_pulsewidth
 # Beachten: bevor mittels l = pigpio.pi() eine Instanz der pigpio.pi Klasse
@@ -32,8 +29,8 @@ _maxPW = 2250   # max Impulsdauer in µs (Falsche Werte können zu Beschädigung
 # Die Werte ergeben sich durch den eingeschränkten Lenkradius der Lenkmechanik.
 # Falsche Werte können zu Beschädigungen führen!
 
-_LL = 33 # linkes Limit in Prozent !MUSS kleiner als rl sein
-_RL = 72 # rechtes Limit in Prozent !MUSS größer als ll sein
+_RL = 33 # rechtes Limit in Prozent !MUSS kleiner als _LL sein
+_LL = 72 # linkes Limit in Prozent !MUSS größer als _RL sein
 
 ## ------------------------------
 
@@ -47,7 +44,7 @@ def PercentToPW(Percent):
 def setPosition(newPos):
     """
     Setzt die Servo auf die in Prozent angegebene Position, die automatisch in den "erlaubten Bereich"
-    gemappt wird.
+    gemappt wird. O Prozent setzt die Lenkung ganz nach rechts, 100 Prozent ganz nach links.
     Bei Erfolg gibt die Funktion True, ansonsten False zurück.
     """
     global _Pos  # Position als global definiert--> bleibt nach Funktionsaufruf erhalten
@@ -56,8 +53,8 @@ def setPosition(newPos):
     if int(newPos) in range(101):
         _Pos = int(newPos)
         
-        if timeAutoDisable > 0:
-            global tmr
+        global tmr
+        if tmr:
             if tmr.isAlive():
                 tmr.cancel()
             tmr = Timer(timeAutoDisable, Disable)
@@ -82,7 +79,15 @@ def setCurrentPos():
     """
     return setPosition(_Pos)
    
-def Disable(): # Deaktiviert die Servo
+def Disable():
+    """
+    Deaktiviert die Servo
+    """
+    global tmr
+    if tmr:
+        if tmr.isAlive():
+            tmr.cancel()
+            
     ret = l.set_servo_pulsewidth(SignalPin, 0)
     if(ret): # Wenn ein Rückgabewert außer 0 zurück geliefert wird, ist ein Fehler aufgetreten.
         print("pigpio failed to disable servo with errorcode {}".format(ret))
@@ -100,19 +105,27 @@ def getPos():
 def getPW():
     return l.get_servo_pulsewidth(SignalPin)
 
+def close():
+    """
+    Gibt verwendete Ressourcen frei. Beim Beenden des Skripts ausführen!
+    """
+    Disable()
+    return l.stop()
+    
+
 
 ## Initialisierungen:
 
 # Prüfung auf gültige Eingaben:
-if (_LL not in range(101) or _RL not in range(101) or _RL < _LL):
+if (_RL not in range(101) or _LL not in range(101) or _LL < _RL):
     raise ValueError ("rl must be higher than ll and both must be Integers between 0 and 100!")
 
 # Berechnung der minimalen und maximalen Pulsweite innerhalb des angegebenen Bewegungsradiuses:
 
 _k = (_maxPW - _minPW)/100
 
-_maxPW = _RL * _k + _minPW
-_minPW = _LL * _k + _minPW
+_maxPW = _LL * _k + _minPW
+_minPW = _RL * _k + _minPW
 
 _k = (_maxPW - _minPW)/100
 
@@ -122,6 +135,8 @@ _Pos = 50
 
 if timeAutoDisable > 0:
     tmr = Timer(timeAutoDisable, Disable)
+else:
+    tmr = False
 
 print("trying to connect to pigpio daemon")
 l = pigpio.pi()       # mit pigpio-Daemon verbinden und ein Objekt der Klasse pigpio.pi erstellen
