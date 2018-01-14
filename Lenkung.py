@@ -32,8 +32,8 @@ _maxPW = 2250   # max Impulsdauer in µs (Falsche Werte können zu Beschädigung
 # Die Werte ergeben sich durch den eingeschränkten Lenkradius der Lenkmechanik.
 # Falsche Werte können zu Beschädigungen führen!
 
-_RL = 33 # rechtes Limit in Prozent !MUSS kleiner als rl sein
-_LL = 72 # linkes Limit in Prozent !MUSS größer als ll sein
+_RL = 33 # rechtes Limit in Prozent !MUSS kleiner als _LL sein
+_LL = 72 # linkes Limit in Prozent !MUSS größer als _RL sein
 
 ## ------------------------------
 
