@@ -4,7 +4,7 @@ Skript zur grundlegenden Steuerung des Autos mit dem XBox 360 Wireless Controlle
 
 "xboxdrv" installieren:
 
-	sudo apt-get install xboxdrv
+	sudo apt install xboxdrv
 
 Testen ob Treiber korrekt installiert ist:
 
