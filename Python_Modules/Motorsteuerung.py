@@ -62,6 +62,9 @@ def roll():
         return True 
 
 def brake():
+    """
+    Bremst das Fahrzeug aus, indem der Motor kurzgeschlossen wird.
+    """
     v.write(IN1, 1)
     v.write(IN2, 1)
     ret = v.set_PWM_dutycycle(EN,PWM_RANGE)
@@ -71,7 +74,12 @@ def brake():
     else:
         return True 
         
-def drive(speed):
+def setSpeed(speed):
+    """
+    Setzt die Geschwindigkeit auf den übergebenen Prozentwert.
+    Bei einem negativen Wert fährt das Fahrzeug rückwärts.
+    Der Übergabewert muss zwischen -100 und 100 liegen!
+    """
     if speed < 0:
         return backward(0-speed)
     elif speed == 0:
@@ -79,12 +87,22 @@ def drive(speed):
     else:
         return forward(speed)
         
-setSpeed = drive
+drive = setSpeed
         
-def getDC():
-    return v.get_PWM_dutycycle(EN)
+def getSpeed():
+    """
+    Gibt die aktuell gesetzte Geschwindigkeit als Prozentwert zwischen -100 und 100 zurück.
+    Ein negativer Wert bedeutet, dass sich das Fahrzeug rückwärts bewegt.
+    """
+    if v.read(IN1)==0 and v.read(IN2)==1:
+        return v.get_PWM_dutycycle(EN)
+    elif v.read(IN1)==1 and v.read(IN2)==0:
+        return (0-v.get_PWM_dutycycle(EN))
+    else:
+        return 0
+    
 
-getSpeed = getDC
+getDC = getSpeed
 
 def close():
     """
