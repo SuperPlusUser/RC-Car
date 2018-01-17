@@ -7,7 +7,7 @@ import pigpio           # Verwendung: http://abyz.me.uk/rpi/pigpio/python.html#s
 
 ## --- Variablen-Definitionen ---
 
-PWM_FREQ = 25               # PWM-Frequenz
+PWM_FREQ = 50               # PWM-Frequenz
 PWM_RANGE = 100             # Dutycycle-Range
 # (siehe http://abyz.me.uk/rpi/pigpio/python.html#set_PWM_range)
 
