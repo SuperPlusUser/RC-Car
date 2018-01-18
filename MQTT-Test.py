@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
 
+# Das Skript verbindet sich mit einem MQTT-Broker welcher lokal auf dem Raspberry Pi läuft
+# und aboniert die Topics "steer" und "motor".
+# Zahlenwerte die im Topic "steer" veröffentlicht werden, werden an die Funktion setPos() des Moduls Lenkung weitergereicht.
+# Zahlenwerte im Topic "motor" werden an die Funktion setSpeed() des Moduls Motorsteuerung weitergereicht. 
+# Damit ermöglicht das Skript eine rudimentäre Steuerung des Autos von einem MQTT-Client.
+# Zur Steuerung bietet sich beispielsweise die App MQTT Dashboard an, 
+# welche es ermöglicht die Geschwindigkeit und die Lenkung über eine sogenannte "SeekBar" zu steuern.
+
 ## Quellen:
 # - https://www.dinotools.de/2015/04/12/mqtt-mit-python-nutzen/
 
