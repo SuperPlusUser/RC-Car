@@ -1,8 +1,11 @@
 import socket
 import sys
 
+#TODO:
+# - Port bei Exceptions freigeben!
+
 HOST = 'localhost'
-PORT = 8000
+PORT = 8001
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -18,7 +21,7 @@ print('Socket binding erfolgreich')
 s.listen(10)
 print(' Socket now listening ')
 conn, addr = s.accept()
-print(' Verbunden mit: ' + addr[0] + '+' + str(addr[1]))
+print(' Verbunden mit: ' + addr[0] + ' auf Port ' + str(addr[1]))
 
 while 1:
 		conn.send(bytes('Nachricht' + '\r\n', 'UTF-8'))
