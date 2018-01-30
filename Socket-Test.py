@@ -7,7 +7,7 @@
 # - Warum funktionieren manchmal keine KeyboardInterrupts?
 
 import asyncio
-import time
+import sys
 
 IP = "192.168.177.50"
 PORT = 8888
@@ -58,6 +58,7 @@ SensorDict = {"Sensor1" : SensorFkt1, "Sensor2" : SensorFkt2}
 
 DriveFkt = setSpeed
 
+DEBUG = True if "-d" in sys.argv else False
 
 class ServerProtocol(asyncio.Protocol):
     """
@@ -188,12 +189,19 @@ coro = loop.create_server(ServerProtocol, IP, PORT)
 server = loop.run_until_complete(coro)
 
 # DEBUGGING:
-async def printCurrentTasks():
-    while True:
-        print(asyncio.Task.all_tasks())
-        await asyncio.sleep(1)
-
-loop.create_task(printCurrentTasks())
+async def printCurrentTasks(repeat = False):
+    Tasks = asyncio.Task.all_tasks()
+    print(Tasks)
+    while repeat:
+        newTasks = asyncio.Task.all_tasks()
+        if Tasks != newTasks:
+            Tasks = newTasks
+            print(Tasks)
+        await asyncio.sleep(repeat)
+    return asyncio.Task.all_tasks()
+    
+if DEBUG:
+    loop.create_task(printCurrentTasks(1))
 
 # Serve requests until Ctrl+C is pressed
 print('Serving on {}'.format(server.sockets[0].getsockname()))
