@@ -80,12 +80,14 @@ def setSpeed(speed):
     Bei einem negativen Wert fährt das Fahrzeug rückwärts.
     Der Übergabewert muss zwischen -100 und 100 liegen!
     """
-    if speed < 0:
-        return backward(0-speed)
-    elif speed == 0:
-        return roll()
-    else:
+    if speed == "stop":
+        return brake()
+    elif speed > 0:
         return forward(speed)
+    elif speed < 0:
+        return backward(0-speed)
+    else: # speed == 0
+        return roll()
         
 drive = setSpeed
         
