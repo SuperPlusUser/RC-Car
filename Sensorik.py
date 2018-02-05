@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 
-## Version 0.2
+## Version 0.2.5
+#
+## Changelog:
+#
+# --- 0.2.5 ---
+# - asyncio.ensure_future statt loop.create_task
+# - SensorMeta hinzugefuegt --> Problem mit Vererbung von Klassen-Variablen geloest
+# 
 
 ## TODO:
 # - Eventuell Beobachter-Entwurfsmuster implementieren
-# - Warum kommen Alerts mehrfach an (pro Sensor-Klasse einmal)?
+# - Kommentierung und Exception-Handling verbessern
 
 
 import asyncio
@@ -12,24 +19,31 @@ import sys
 
 DEBUG =True if "-d" in sys.argv else False
 
+# Quelle: https://stackoverflow.com/questions/46237639/inheritance-of-class-variables-in-python
+class SensorMeta(type):
+    def __new__(cls, name, bases, attrs):
+        new_class = super(SensorMeta, cls).__new__(cls, name, bases, attrs)
+        
+        # Initialisierungen (sollten nicht ueberschrieben werden):
+        new_class.SensorDat = False   # In dieser Static Variable werden die zuletzt ausgelesenen Sensor-Daten gespeichert. Solange keine ausgelesen wurden: False
+        new_class.AlertMsg = False    # In dieser Static Variable werden Allert-Nachrichten als String gespeichert. Solange kein Alert vorliegt: False
+        new_class.AlertSubscriber = []# In dieser Liste werden die Funktionen hinterlegt. die bei einem Alert aufgerufen werden.
+        if new_class.REFRESH_TIME:
+            new_class.RefreshTask = asyncio.ensure_future(new_class._AutoRefresh())
 
-class Sensor:
+        return new_class
+
+
+class Sensor(metaclass=SensorMeta):
     """
     Abstrakte Basisklasse, die alle Methoden in Bezug zu den Sensoren implementiert. Für jeden Sensor sollte eine Klasse
     von dieser Klasse geerbt werden, die zumindest festlegt, welche Funktion zum Auslesen der Sensordaten aufgerufen werden muss.
     Bei jeder konkreter Sensorklasse muss der Name als Klassenattribut angegeben werden, unter welchem der Sensor angesprochen werden soll!
     """
 
-    # Diese Klassenatribute koennen auf konkreter Ebene ueberschrieben werden:
-    REFRESH_TIME = 5    # Nach dieser Zeit in Sekunden weden die Sensordaten erneut vom Sensor aktualisiert
+    # Diese Klassenatribute muessen auf konkreter Ebene ueberschrieben werden:
     NAME = "AbstrakteSensorklasse" # Gibt den Namen des Sensors an. Dieser wird als Key im Dict 'Sensoren' abgelegt
-
-
-    # Initialisierungen (sollten nicht ueberschrieben werden)
-    RefreshTask = False # Sobald ein Objekt der Klasse erzeugt wird, wird in dieser Klassenvariable der Task fuer die automatische Aktualisierung gespeichert
-    SensorDat = False   # In dieser Static Variable werden die zuletzt ausgelesenen Sensor-Daten gespeichert. Solange keine ausgelesen wurden: False
-    AlertMsg = False    # In dieser Static Variable werden Allert-Nachrichten als String gespeichert. Solange kein Alert vorliegt: False
-    AlertSubscriber = []# In dieser Liste werden die Funktionen hinterlegt. die bei einem Alert aufgerufen werden.
+    REFRESH_TIME = False    # Nach dieser Zeit in Sekunden weden die Sensordaten erneut vom Sensor aktualisiert
     
     @classmethod
     def ReadSensorDat(cls):
@@ -58,8 +72,7 @@ class Sensor:
             cls.Alert()
 
     @classmethod
-    def SubscribeAlerts(cls, loop, AlertOutput):
-        cls.StartAutoRefresh(loop)
+    def SubscribeAlerts(cls, AlertOutput):
         cls.AlertSubscriber.append(AlertOutput)
 
     @classmethod
@@ -68,19 +81,13 @@ class Sensor:
 
     @classmethod
     def Alert(cls):
-        if DEBUG: print("Registred Alert-Subscriber: {}".format(cls.AlertSubscriber))
         for Output in cls.AlertSubscriber:
             if DEBUG: print("Sending Alert {} to {}".format(cls.AlertMsg, Output))
-            Output(cls.NAME, cls.AlertMsg)
+            Output(cls.NAME, cls.GetAlert())
 
     @classmethod
     def GetAlert(cls):
             return cls.AlertMsg
-    
-    @classmethod
-    def StartAutoRefresh(cls, loop):
-        if not cls.RefreshTask: # Refresh-Task pro Sensor nur einmal starten
-            cls.RefreshTask = loop.create_task(cls._AutoRefresh())
     
     @classmethod
     async def _AutoRefresh(cls):
@@ -89,12 +96,9 @@ class Sensor:
             await asyncio.sleep(cls.REFRESH_TIME)
 
 
-    def __init__(self, loop):
-        self.loop = loop # loop wird fuer automatische refreshes und Veroeffentlichungen benoetigt
+    def __init__(self):
         self.sub = False
         self.lastPubValue = None
-        # Bei der ersten Instanziierung der Klasse die automatische Aktualisierung starten:
-        type(self).StartAutoRefresh(loop)
 
     def __del__(self):
         if self.sub:
@@ -112,7 +116,7 @@ class Sensor:
         if t < type(self).REFRESH_TIME or t > 3600: 
             raise ValueError("Time out of Range ({} , 3600)".format(type(self).REFRESH_TIME))
         if self.sub == False:
-            self.sub = self.loop.create_task(self._SendSensorDat(Output, t))
+            self.sub = asyncio.ensure_future(self._SendSensorDat(Output, t))
         else:
             raise ValueError("ERROR: Sensor already subscribed. One object of a sensor cannot be subscribed twice. Call 'desubscribe' first!")
 
@@ -142,13 +146,12 @@ class Sensor:
 
     async def _SendSensorDat(self, Output, time):
         """
-        Veroeffentlicht die Sensordaten wiederholt an das uebergebene transport-Objekt
+        Veroeffentlicht die Sensordaten wiederholt an die uebergebene 'Output(Name, SensorDaten)'- Fkt
         time gibt die Zeit in Sekunden zwischend den Veroeffentlichungen an
         BEACHTEN: Es macht keinen Sinn, das Intervall der Veroeffentlichungen kleiner zu waehlen
                   als das Intervall, in dem die jeweiligen Sensordaten aktualisiert werden (REFRESH_TIME)!
         """
         while True:
-            if DEBUG: print("Reading Data from Sensor {}".format(self.NAME))
             Dat = self.getSensorDat(True) # Nur neue Werte veroeffentlichen
             if Dat:
                 if DEBUG: print("Sending Sensor Data: {}".format(Dat))
@@ -162,7 +165,7 @@ class Sensor:
 
 class Sensor1(Sensor):
     NAME = "1"
-    AlertSubscriber = []# In dieser Liste werden die Funktionen hinterlegt. die bei einem Alert aufgerufen werden.
+    REFRESH_TIME = 1
     
     @classmethod
     def ReadSensorDat(cls):
@@ -171,8 +174,7 @@ class Sensor1(Sensor):
 x = 0 # Initialisierung der Test-Variable für Sensor 2
 class Sensor2(Sensor):
     NAME = "2"
-    REFRESH_TIME = 1
-    AlertSubscriber = []# In dieser Liste werden die Funktionen hinterlegt. die bei einem Alert aufgerufen werden.
+    REFRESH_TIME = 2
     
     @classmethod
     def ReadSensorDat(cls):
@@ -188,7 +190,7 @@ class Sensor2(Sensor):
 
 class Sensor3(Sensor):
     NAME = "3"
-    AlertSubscriber = []# In dieser Liste werden die Funktionen hinterlegt. die bei einem Alert aufgerufen werden.
+    REFRESH_TIME = 5
     
     @classmethod
     def ReadSensorDat(cls):
@@ -210,7 +212,13 @@ Sensoren = {}
 # Alle Subklassen und das jeweils zugehörige Klassenatrribut "name" werden automatisch in das obige Dictionary eingetragen:
 for subcl in Sensor.__subclasses__():
     Sensoren[subcl.NAME] = subcl
-
+    
+# Print all Alerts to StdOut:
+def PrintAlerts(Type, Msg):
+    print("! Alert from Sensor {} received: {} !".format(Type, Msg))
+    
+for Sen in Sensoren:
+    Sensoren[Sen].SubscribeAlerts(PrintAlerts)
 
 
 if __name__ == "__main__":

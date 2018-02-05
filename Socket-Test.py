@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 
-## Version 0.2
+## Version 0.2.5
 
 ## Changelog:
+#
+# --- 0.2.5 ---
+# - asyncio.ensure_future statt loop.create_task
+# 
 # --- 0.2 ---
 # - Sensorik und Steuerung in eigene Module ausgelagert
 # - Sensoen als Klassen implementiert
@@ -10,6 +14,7 @@
 
 ## TODO:
 # - Warum funktionieren manchmal keine KeyboardInterrupts?
+# - Kommentierung und Exception-Handling verbessern
 
 
 import asyncio
@@ -64,7 +69,7 @@ class ServerProtocol(asyncio.Protocol):
 
         # Subscribe Alerts from all Sensors:
         for Sen in Sensorik.Sensoren:
-            Sensorik.Sensoren[Sen].SubscribeAlerts(loop, self.SendAlert)
+            Sensorik.Sensoren[Sen].SubscribeAlerts(self.SendAlert)
 
     def connection_lost(self, exc):
         print("Client {} closed the connection".format(self.peername))
@@ -112,7 +117,7 @@ class ServerProtocol(asyncio.Protocol):
                         if sensor in self.subscribedSensors:
                             self.subscribedSensors[sensor].desubscribe()
                         else:
-                            self.subscribedSensors[sensor] = Sensorik.Sensoren[sensor](loop)
+                            self.subscribedSensors[sensor] = Sensorik.Sensoren[sensor]()
                         
                         # Subscribe:
                         if t:
@@ -172,9 +177,6 @@ loop = asyncio.get_event_loop()
 # Each client connection will create a new protocol instance
 coro = loop.create_server(ServerProtocol, IP, PORT)
 server = loop.run_until_complete(coro)
-
-# Initialisiere Steuerungsmodul:
-#Steuerung.init(loop)
 
 # DEBUGGING:
 async def printCurrentTasks(repeat = False):
