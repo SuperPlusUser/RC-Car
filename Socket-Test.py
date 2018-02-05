@@ -4,6 +4,9 @@
 
 ## Changelog:
 #
+# --- 0.2.6 ---
+# - Exception-Handling beim subscriben etwas verbessert
+#
 # --- 0.2.5 ---
 # - asyncio.ensure_future statt loop.create_task
 # 
@@ -130,6 +133,11 @@ class ServerProtocol(asyncio.Protocol):
                         self.transport.write("err(sub '{}', unknown sensor!)\n".format(sensor).encode())
                         err = True
                         pass # Falls ein Sensor nicht existiert, sollen die folgenden trotzdem noch abonniert werden
+                    except ValueError as e:
+                        print("ValueError:" + e.args[0])
+                        self.transport.write("err(sub {}: {})\n".format(sensor, e.args[0]).encode())
+                        err = True
+                        pass
                     else:
                         self.transport.write("ack(sub '{}')\n".format(sensor).encode())
 
@@ -168,9 +176,11 @@ class ServerProtocol(asyncio.Protocol):
             err = False
 
     def SendMsg(self, Type, Message):
+        if DEBUG: print( "Sending Message of Type {} to Host {}: {}".format(Type, self.peername, Message))
         self.transport.write((str(Type) + "(" + str(Message) + ")\n").encode())
 
     def SendAlert(self, Sensor, Message):
+        if DEBUG: print( "Sending Alert of Sensor {} to Host {}: {}".format(Sensor, self.peername, Message))
         self.transport.write(("ALERT:" + str(Sensor) + "(" + str(Message) + ")\n").encode())
         
 loop = asyncio.get_event_loop()
