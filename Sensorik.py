@@ -7,11 +7,12 @@
 # --- 0.2.5 ---
 # - asyncio.ensure_future statt loop.create_task
 # - SensorMeta hinzugefuegt --> Problem mit Vererbung von Klassen-Variablen geloest
-# 
+#
 
 ## TODO:
 # - Eventuell Beobachter-Entwurfsmuster implementieren
 # - Kommentierung und Exception-Handling verbessern
+# - Uebersichtlichkeit verbessern
 
 
 import asyncio
@@ -19,11 +20,16 @@ import sys
 
 DEBUG =True if "-d" in sys.argv else False
 
+
+# --------------------------
+## --- Sensor-Metaklasse ---
+# --------------------------
+
 # Quelle: https://stackoverflow.com/questions/46237639/inheritance-of-class-variables-in-python
 class SensorMeta(type):
     def __new__(cls, name, bases, attrs):
         new_class = super(SensorMeta, cls).__new__(cls, name, bases, attrs)
-        
+
         # Initialisierungen (sollten nicht ueberschrieben werden):
         new_class.SensorDat = False   # In dieser Static Variable werden die zuletzt ausgelesenen Sensor-Daten gespeichert. Solange keine ausgelesen wurden: False
         new_class.AlertMsg = False    # In dieser Static Variable werden Allert-Nachrichten als String gespeichert. Solange kein Alert vorliegt: False
@@ -34,6 +40,10 @@ class SensorMeta(type):
         return new_class
 
 
+# -------------------------------------
+## --- abstrakte Sensor-Basisklasse ---
+# -------------------------------------
+
 class Sensor(metaclass=SensorMeta):
     """
     Abstrakte Basisklasse, die alle Methoden in Bezug zu den Sensoren implementiert. Für jeden Sensor sollte eine Klasse
@@ -41,10 +51,19 @@ class Sensor(metaclass=SensorMeta):
     Bei jeder konkreter Sensorklasse muss der Name als Klassenattribut angegeben werden, unter welchem der Sensor angesprochen werden soll!
     """
 
+    # ----------------------
+    ## --Klassenattribute --
+    # ----------------------
+
     # Diese Klassenatribute muessen auf konkreter Ebene ueberschrieben werden:
     NAME = "AbstrakteSensorklasse" # Gibt den Namen des Sensors an. Dieser wird als Key im Dict 'Sensoren' abgelegt
     REFRESH_TIME = False    # Nach dieser Zeit in Sekunden weden die Sensordaten erneut vom Sensor aktualisiert
-    
+
+
+    # ----------------------
+    ## -- Klassenmethoden --
+    # ----------------------
+
     @classmethod
     def ReadSensorDat(cls):
         """
@@ -88,13 +107,16 @@ class Sensor(metaclass=SensorMeta):
     @classmethod
     def GetAlert(cls):
             return cls.AlertMsg
-    
+
     @classmethod
     async def _AutoRefresh(cls):
         while True:
             cls.Refresh()
             await asyncio.sleep(cls.REFRESH_TIME)
 
+    # ---------------------
+    ## -- Objektmethoden --
+    # ---------------------
 
     def __init__(self):
         self.sub = False
@@ -104,19 +126,20 @@ class Sensor(metaclass=SensorMeta):
         if self.sub:
             self.sub.cancel()
 
-    def subscribe(self, Output, time = False):
+    def subscribe(self, Output, OnlyNew = True, time = False):
         """
         Die uebergebene Funktion "Output" muss zwei Parameter annehmen: Type und Message
         Es macht keinen Sinn, das Intervall "time" der Veroeffentlichungen kleiner zu waehlen
-        als das Intervall, in dem die jeweiligen Sensordaten aktualisiert werden
+        als das Intervall, in dem die jeweiligen Sensordaten aktualisiert werden.
+        Wenn OnlyNew True ist (Standard) werden nur neue Werte veroeffentlicht.
         """
         if not time:
             time = type(self).REFRESH_TIME
         t = float(time)
-        if t < type(self).REFRESH_TIME or t > 3600: 
+        if t < type(self).REFRESH_TIME or t > 3600:
             raise ValueError("Time out of Range ({} , 3600)".format(type(self).REFRESH_TIME))
         if self.sub == False:
-            self.sub = asyncio.ensure_future(self._SendSensorDat(Output, t))
+            self.sub = asyncio.ensure_future(self._SendSensorDat(Output, OnlyNew, t))
         else:
             raise ValueError("ERROR: Sensor already subscribed. One object of a sensor cannot be subscribed twice. Call 'desubscribe' first!")
 
@@ -133,18 +156,18 @@ class Sensor(metaclass=SensorMeta):
                     |                 -> Wenn True: Die Sensordaten werden zuvor neu vom Sensor aktualisiert
                     |                    Standard False: Die als Klassenattribut seit dem letzten Aufruf der Klassenfunktion
                     |                    "Refresh()" zwischengespeicherten Sensordaten werden ausgegeben
-                    |                                                      
+                    |
                     -> Wenn True: Es wird nur ein Rueckgabewert gegeben, falls die Sensordaten sich seit dem letzten Aufruf
                        der Methode verändert haben, andernfalls: False.
         """
         if Refresh: type(self).Refresh()    # Falls Refresh == True: Sensordaten vor der Rueckgabe aktualisieren
         Value = type(self).SensorDat        # Das Klassen-Attribut "SensorDat" in die lokale Variable "value" zwischenspeichern
         if Value == self.lastPubValue and OnlyNew: return False
-        else: 
+        else:
             self.lastPubValue = Value
             return Value
 
-    async def _SendSensorDat(self, Output, time):
+    async def _SendSensorDat(self, Output, OnlyNew, time):
         """
         Veroeffentlicht die Sensordaten wiederholt an die uebergebene 'Output(Name, SensorDaten)'- Fkt
         time gibt die Zeit in Sekunden zwischend den Veroeffentlichungen an
@@ -152,21 +175,21 @@ class Sensor(metaclass=SensorMeta):
                   als das Intervall, in dem die jeweiligen Sensordaten aktualisiert werden (REFRESH_TIME)!
         """
         while True:
-            Dat = self.getSensorDat(True) # Nur neue Werte veroeffentlichen
+            Dat = self.getSensorDat(OnlyNew)
             if Dat:
                 if DEBUG: print("Sending Sensor Data: {}".format(Dat))
-                Output(str(type(self).NAME),Dat) 
+                Output(str(type(self).NAME),Dat)
             await asyncio.sleep(time)
 
 
-# ------------------------------------------------
-#       konkrete Sensor-Klassen:
-# ------------------------------------------------
+# --------------------------------
+## --- konkrete Sensor-Klassen ---
+# --------------------------------
 
 class Sensor1(Sensor):
     NAME = "1"
     REFRESH_TIME = 1
-    
+
     @classmethod
     def ReadSensorDat(cls):
         return "xyz"
@@ -175,7 +198,7 @@ x = 0 # Initialisierung der Test-Variable für Sensor 2
 class Sensor2(Sensor):
     NAME = "2"
     REFRESH_TIME = 2
-    
+
     @classmethod
     def ReadSensorDat(cls):
         global x
@@ -191,36 +214,56 @@ class Sensor2(Sensor):
 class Sensor3(Sensor):
     NAME = "3"
     REFRESH_TIME = 5
-    
+
     @classmethod
     def ReadSensorDat(cls):
         return "abc"
-    
+
     @classmethod
     def CheckAlerts(cls):
         return "TEST Alert"
-        
+
 # Hier weitere konkrete Sensoren nach obigen Beispielen einfuegen...
 
 
 
-
-## Initialisierungen:
+# --------------------------
+## --- Initialisierungen ---
+# --------------------------
 
 # Ein Dictionary, das den Namen aller Subklassen von "Sensor" als Key enthält und die jeweilige Klasse als Wert:
 Sensoren = {}
 # Alle Subklassen und das jeweils zugehörige Klassenatrribut "name" werden automatisch in das obige Dictionary eingetragen:
 for subcl in Sensor.__subclasses__():
     Sensoren[subcl.NAME] = subcl
-    
-# Print all Alerts to StdOut:
+
+
+# ------------------
+## --- Debugging ---
+# ------------------
+
+def PrintSensorDat(Sensor, Data):
+    print(str(Sensor), ":", str(Data))
+
 def PrintAlerts(Type, Msg):
     print("! Alert from Sensor {} received: {} !".format(Type, Msg))
-    
+
+# Print all Allerts to StdOut:
 for Sen in Sensoren:
     Sensoren[Sen].SubscribeAlerts(PrintAlerts)
 
+# -------------
+## --- Main ---
+# -------------
 
 if __name__ == "__main__":
     # Hier ergaenzen, was das Modul machen soll, wenn es direkt als Skript gestartet wird:
-    print("This Module is currently not intended to be started as a script! Exiting...")
+    loop = asyncio.get_event_loop()
+    for Sen in Sensoren:
+        S = Sensoren[Sen]()
+        S.subscribe(PrintSensorDat, False) # subscribe all Sensors with default refresh time
+    try:
+        loop.run_forever()
+    except:
+        print("interrupted by user")
+        # Hier noch aufraeumen!

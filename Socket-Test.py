@@ -16,6 +16,7 @@
 # - Im Debugging-Modus starten bei Aufruf mit dem Parameter "-d"
 
 ## TODO:
+# - Nachrichten im XML-Format austauschen?!
 # - Warum funktionieren manchmal keine KeyboardInterrupts?
 # - Kommentierung und Exception-Handling verbessern
 
@@ -24,7 +25,7 @@ import asyncio
 import sys
 
 import Sensorik
-#import Steuerung
+#import Steuerung #Deaktiviert, weil ansonsten nur auf Rasoi lauffaehig
 
 IP = "127.0.0.1"
 PORT = 8889
@@ -99,7 +100,7 @@ class ServerProtocol(asyncio.Protocol):
 
 
             # bekannte Befehle abfangen:
-            
+
             # Hier weitere Befehle mit elif ... einfuegen!
 
 #            if command == "drv":
@@ -115,19 +116,19 @@ class ServerProtocol(asyncio.Protocol):
                         else:
                             sensor = sen
                             t = False
-                            
+
                         # if already subscribed desubscribe:
                         if sensor in self.subscribedSensors:
                             self.subscribedSensors[sensor].desubscribe()
                         else:
                             self.subscribedSensors[sensor] = Sensorik.Sensoren[sensor]()
-                        
+
                         # Subscribe:
                         if t:
                             self.subscribedSensors[sensor].subscribe(self.SendMsg, t)
                         else:
                             self.subscribedSensors[sensor].subscribe(self.SendMsg)
-                            
+
                     except KeyError:
                         print("ERROR: Unknown sensor '{}'".format(sensor))
                         self.transport.write("err(sub '{}', unknown sensor!)\n".format(sensor).encode())
@@ -182,7 +183,7 @@ class ServerProtocol(asyncio.Protocol):
     def SendAlert(self, Sensor, Message):
         if DEBUG: print( "Sending Alert of Sensor {} to Host {}: {}".format(Sensor, self.peername, Message))
         self.transport.write(("ALERT:" + str(Sensor) + "(" + str(Message) + ")\n").encode())
-        
+
 loop = asyncio.get_event_loop()
 # Each client connection will create a new protocol instance
 coro = loop.create_server(ServerProtocol, IP, PORT)
@@ -199,7 +200,7 @@ async def printCurrentTasks(repeat = False):
             print(Tasks)
         await asyncio.sleep(repeat)
     return asyncio.Task.all_tasks()
-    
+
 if DEBUG:
     loop.create_task(printCurrentTasks(1))
 

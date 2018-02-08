@@ -4,8 +4,13 @@
 # - http://abyz.me.uk/rpi/pigpio/python.html
 
 import pigpio           # Verwendung: http://abyz.me.uk/rpi/pigpio/python.html#set_servo_pulsewidth
+import sys
 
-## --- Variablen-Definitionen ---
+# --------------------------------
+## --- Konstanten-Definitionen ---
+# --------------------------------
+
+DEBUG = True if "-d" in sys.argv else False
 
 PWM_FREQ = 50               # PWM-Frequenz
 PWM_RANGE = 100             # Dutycycle-Range
@@ -18,12 +23,9 @@ EN = 17                 # Hauptmotor
 IN1 = 27                # Motor Forwaerts: 0
 IN2 = 22                # Motor Forwaerts: 1
 
-## ------------------------------
-
-
-## Funktionsdefinitionen:
-
-# Hauptmotor:
+# ------------------------------
+## --- Funktionsdefinitionen ---
+# ------------------------------
 
 def forward(speed):
     if speed >= 0 and speed <= PWM_RANGE:
@@ -34,10 +36,10 @@ def forward(speed):
             print("pigpio failed to set dutycycle with errorcode {}".format(ret))
             return False
         else:
+            if DEBUG: print("speed set to " + str(speed))
             return True
     else:
-        print("ERROR: speed out of range")
-        return False
+        raise ValueError("Speed out of range")
 
 def backward(speed):
     if speed >= 0 and speed <= PWM_RANGE:
@@ -48,9 +50,10 @@ def backward(speed):
             print("pigpio failed to set dutycycle with errorcode {}".format(ret))
             return False
         else:
-            return True   
+            if DEBUG: print("speed set to -" + str(speed))
+            return True
     else:
-        print("ERROR: speed out of range")
+        raise ValueError("Speed out of range")
         return False
 
 def roll():
@@ -59,7 +62,8 @@ def roll():
         print("pigpio failed to set dutycycle with errorcode {}".format(ret))
         return False
     else:
-        return True 
+        if DEBUG: print("Motor disabled")
+        return True
 
 def brake():
     """
@@ -72,8 +76,9 @@ def brake():
         print("pigpio failed to set dutycycle with errorcode {}".format(ret))
         return False
     else:
-        return True 
-        
+        if DEBUG: print("Breaking")
+        return True
+
 def setSpeed(speed):
     """
     Setzt die Geschwindigkeit auf den übergebenen Prozentwert.
@@ -88,9 +93,9 @@ def setSpeed(speed):
         return backward(0-speed)
     else: # speed == 0
         return roll()
-        
+
 drive = setSpeed
-        
+
 def getSpeed():
     """
     Gibt die aktuell gesetzte Geschwindigkeit als Prozentwert zwischen -100 und 100 zurück.
@@ -102,7 +107,7 @@ def getSpeed():
         return (0-v.get_PWM_dutycycle(EN))
     else:
         return 0
-    
+
 
 getDC = getSpeed
 
@@ -113,8 +118,9 @@ def close():
     roll()
     return v.stop()
 
-
-## Initialisierungen:
+# --------------------------
+## --- Initialisierungen ---
+# --------------------------
 
 v = pigpio.pi()          # pigpiod muss im Hintergrund laufen!
 v.set_mode(EN, pigpio.OUTPUT)

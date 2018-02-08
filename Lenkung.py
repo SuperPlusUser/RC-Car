@@ -11,33 +11,36 @@ import pigpio
 
 import os               # wird verwendet, um pigpiod automatisch zu starten
 import time
-from threading import Timer # Ermöglicht es, die Servo nach einer gewissen Zeit automatisch zu deaktivieren
+import sys
 
-## --- Variablen-Definitionen ---
+# --------------------------------
+## --- Konstanten-Definitionen ---
+# --------------------------------
 
-timeAutoDisable = 60
-# Falls größer 0, wird die Servo automatisch nach so vielen Sekunden deaktiviert.
+DEBUG = True if "-d" in sys.argv else False
 
 ## Eigenschaften der Servo:
 
 SignalPin = 18  # GPIO-Pin der Servo
-_minPW = 750    # minimale Impulsdauer in µs (Falsche Werte können zu Beschädigungen führen!)
-_maxPW = 2250   # max Impulsdauer in µs (Falsche Werte können zu Beschädigungen führen!)
+_minPW = 750    # minimale Impulsdauer in us (Falsche Werte koennen zu Beschaedigungen fuehren!)
+_maxPW = 2250   # max Impulsdauer in us (Falsche Werte koennen zu Beschaedigungen fuehren!)
 
 ## Einschränkung des Bewegungsradiuses (in Prozent):
 
-# Die Werte ergeben sich durch den eingeschränkten Lenkradius der Lenkmechanik.
-# Falsche Werte können zu Beschädigungen führen!
+# Die Werte ergeben sich durch den eingeschraenkten Lenkradius der Lenkmechanik.
+# Falsche Werte können zu Beschaedigungen fuehren!
 
 _RL = 33 # rechtes Limit in Prozent !MUSS kleiner als _LL sein
 _LL = 72 # linkes Limit in Prozent !MUSS größer als _RL sein
 
-## ------------------------------
 
 
-## Funktionsdefinitionen
-    
+# ------------------------------
+## --- Funktionsdefinitionen ---
+# ------------------------------
+
 def PercentToPW(Percent):
+    """ Interne Funktion zur Umrechnung von Prozent auf Pulsbreite """
     return Percent * _k + _minPW
 
 
@@ -48,57 +51,42 @@ def setPosition(newPos):
     Bei Erfolg gibt die Funktion True, ansonsten False zurück.
     """
     global _Pos  # Position als global definiert--> bleibt nach Funktionsaufruf erhalten
-    
+
     newPos+=0.5 # Damit newPos richtig gerundet wird
     if int(newPos) in range(101):
         _Pos = int(newPos)
-        
-        global tmr
-        if tmr:
-            if tmr.isAlive():
-                tmr.cancel()
-            tmr = Timer(timeAutoDisable, Disable)
-            tmr.start()
-            
         ret = l.set_servo_pulsewidth(SignalPin, PercentToPW(_Pos))
-        if(ret): # Wenn ein Rückgabewert außer 0 zurück geliefert wird, ist ein Fehler aufgetreten.
+        if(ret): # Wenn ein Rueckgabewert ausser 0 zurück geliefert wird, ist ein Fehler aufgetreten.
             print("pigpio failed to set pulsewidth with errorcode {}".format(ret))
             return False
         else:
             return True
-    
     else:
-        print("ERROR: Position must be between 0 (left limit) and 100 (right limit)!")
-        return False
-    
+        raise ValueError("Position must be between 0 (left limit) and 100 (right limit)!")
+
 setPos = setPosition # shortcut für weniger Schreibarbeit
-    
+
 def setCurrentPos():
     """
     Setzt Servo auf zuletzt festgelegte Position
     """
     return setPosition(_Pos)
-   
+
 def Disable():
     """
     Deaktiviert die Servo
     """
-    global tmr
-    if tmr:
-        if tmr.isAlive():
-            tmr.cancel()
-            
     ret = l.set_servo_pulsewidth(SignalPin, 0)
-    if(ret): # Wenn ein Rückgabewert außer 0 zurück geliefert wird, ist ein Fehler aufgetreten.
+    if(ret): # Wenn ein Rueckgabewert außer 0 zurueck geliefert wird, ist ein Fehler aufgetreten.
         print("pigpio failed to disable servo with errorcode {}".format(ret))
         return False
     else:
         print("Servo Disabled")
         return True
-    
+
 def setCenter():
     return setPosition(50)
-    
+
 def getPos():
     return _Pos
 
@@ -111,10 +99,11 @@ def close():
     """
     Disable()
     return l.stop()
-    
 
 
-## Initialisierungen:
+# --------------------------
+## --- Initialisierungen ---
+# --------------------------
 
 # Prüfung auf gültige Eingaben:
 if (_RL not in range(101) or _LL not in range(101) or _LL < _RL):
@@ -133,28 +122,21 @@ _k = (_maxPW - _minPW)/100
 _Pos = 50
 
 
-if timeAutoDisable > 0:
-    tmr = Timer(timeAutoDisable, Disable)
-else:
-    tmr = False
-
 print("trying to connect to pigpio daemon")
 l = pigpio.pi()       # mit pigpio-Daemon verbinden und ein Objekt der Klasse pigpio.pi erstellen
-
-
-## Sicherstellen, dass pigpiod läuft:
-
 i=0
+
+# Versuchen pigpiod zu starten, falls notwendig:
 while not l.connected and i<5:
     os.system("sudo pigpiod")
     time.sleep(5)     # pigpiod needs some time to startup...
     l = pigpio.pi()
     i+=1
 if l.connected:
-    print("\nsuccessfully connected to pigpio daemon\n")
+    print("Successfully connected to pigpio daemon")
 else:
-    print("\ncould not connect to pigpiod after {} tries\n".format(i+1))
-    
+    raise OSError("Could not connect to pigpiod after {} tries\n".format(i+1))
+
 
 pigpio.exceptions = False
 # Erlaubt es, Fehler von pigpiod anhand des Rückgabewerts zu behandeln
