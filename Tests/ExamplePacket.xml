@@ -1,0 +1,21 @@
+//SRCCP//v0.1
+length:136
+
+---START---
+<command>
+    <name>subscribe</name>
+    <type>data</type>
+    <sensor interval="10">2</sensor>
+    <sensor>Distance</sensor>
+</command>
+---END---
+
+//SRCCP//v0.1
+length:66
+
+---START---
+<command>
+    <name>drive</name>
+    <speed>100</speed>
+</command>
+---END---
