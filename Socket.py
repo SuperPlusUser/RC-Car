@@ -38,7 +38,7 @@ import xml.etree.ElementTree as ET
 import Sensorik
 import Steuerung
 
-IP = "127.0.0.1"
+IP = ""
 PORT = 8889
 
 DEBUG = True if "-d" in sys.argv else False

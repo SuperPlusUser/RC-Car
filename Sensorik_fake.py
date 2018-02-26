@@ -243,7 +243,7 @@ class Sensor1(Sensor):
 x = 0 # Initialisierung der Test-Variable fuer Sensor 2
 class Sensor2(Sensor):
     NAME = "2"
-    REFRESH_TIME = 20
+    REFRESH_TIME = 10
     UNIT = "°C"
 
     @classmethod
@@ -265,7 +265,6 @@ class Sensor3(Sensor):
 
     @classmethod
     def ReadSensorData(cls):
-        time.sleep(2) # Auslesedauer simulieren
         return "abc"
 
 class IP_Addr(Sensor):
