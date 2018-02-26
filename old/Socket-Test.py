@@ -1,24 +1,41 @@
 #!/usr/bin/env python3
 
-## Version 0.1
+## Version 0.2.7
+
+## Changelog:
+#
+# --- 0.2.7
+# - Fehler beim subscriben mit Zeitangabe behoben
+#
+# --- 0.2.6 ---
+# - Exception-Handling beim subscriben etwas verbessert
+#
+# --- 0.2.5 ---
+# - asyncio.ensure_future statt loop.create_task
+# 
+# --- 0.2 ---
+# - Sensorik und Steuerung in eigene Module ausgelagert
+# - Sensoen als Klassen implementiert
+# - Im Debugging-Modus starten bei Aufruf mit dem Parameter "-d"
 
 ## TODO:
-# - bei jedem sub eine individuelle Aktualisierungszeit
+# - Nachrichten im XML-Format austauschen?!
 # - Warum funktionieren manchmal keine KeyboardInterrupts?
+# - Kommentierung und Exception-Handling verbessern
+
 
 import asyncio
 import sys
 
-IP = "192.168.177.50"
-PORT = 8888
+import Sensorik_async_fake as Sensorik
+import Steuerung_fake as Steuerung
 
-SensorDat1 = "xyz"
-SensorDat2 = 0
+IP = "127.0.0.1"
+PORT = 8889
 
-DefPubDelay = 5 # Zeit in Sekunden zwischen Updates der Sensordaten
-disableMtrDelay = 2 # Wenn nach dieser Anzahl an Sekunden keine neue "Fahranweisung" empfangen wurde, stoppt das Auto. Das soll verhindern, dass das Auto bei einem Verbindungsabbruch o.ae. unkontrolliert weiterfaehrt
+DEBUG = True if "-d" in sys.argv else False
 
-WelcomeMsg = """
+WELCOME_MSG = """
                Welcome to the TCP Socket of the
        
         _______  _______  _______  _______ _________
@@ -42,24 +59,6 @@ WelcomeMsg = """
 
 """
 
-def SensorFkt1():
-    return SensorDat1
-
-def SensorFkt2():
-    global SensorDat2
-    SensorDat2 += 1
-    return SensorDat2
-
-def setSpeed(speed):
-    print("speed set to {}".format(speed))
-
-#Hier koennen die Funktionen definiert werden, die den jeweiligen Sensorwert zurueckliefern (z.B. "Temp" : Sensors.getTemp):
-SensorDict = {"Sensor1" : SensorFkt1, "Sensor2" : SensorFkt2}
-
-DriveFkt = setSpeed
-
-DEBUG = True if "-d" in sys.argv else False
-
 class ServerProtocol(asyncio.Protocol):
     """
     Implementierung eines eigenen Netzwerkprotokol, indem die Methoden der Basisklasse
@@ -67,24 +66,32 @@ class ServerProtocol(asyncio.Protocol):
     weitere Infos: https://docs.python.org/3/library/asyncio-protocol.html?highlight=protocol#protocols
     """
     def __init__(self):
-        self.runningSensorTasks = {} # leeres Dictionary, in dem die Tasks eingetragen werden, welche die Sensordaten senden.
-        
+        self.subscribedSensors = {}
+
     def connection_made(self, transport):
         self.peername = transport.get_extra_info('peername')
         print("Connection from {}".format(self.peername))
         self.transport = transport
-        self.transport.write(WelcomeMsg.encode())
+        self.transport.write(WELCOME_MSG.encode())
+
+        # Subscribe Alerts from all Sensors:
+        for Sen in Sensorik.Sensoren:
+            Sensorik.Sensoren[Sen].SubscribeAlerts(self.SendAlert)
 
     def connection_lost(self, exc):
         print("Client {} closed the connection".format(self.peername))
-        for sensor in  self.runningSensorTasks:
-            print("cancel publishing value of sensor {}".format(sensor)) 
-            self.runningSensorTasks[sensor].cancel()
+        for sensor in list(self.subscribedSensors):
+            print("cancel publishing value of sensor {} to {}".format(sensor,self.peername))
+            self.subscribedSensors[sensor].desubscribe()
+            del self.subscribedSensors[sensor]
+        print("desubscribing Alerts from all Sensors...")
+        for Sen in Sensorik.Sensoren:
+            Sensorik.Sensoren[Sen].DesubscribeAlerts(self.SendAlert)
 
     def data_received(self, data):
         err = False             # um "sonstige" Fehler zu speichern (TODO: evtl andere Loesung suchen!)
         message = data.decode()
-        print("Data received: {!r}".format(message))
+        print("Data received from Host {}: {!r}".format(self.peername, message))
 
         try:
             try:
@@ -95,63 +102,66 @@ class ServerProtocol(asyncio.Protocol):
 
 
             # bekannte Befehle abfangen:
-            
-            if command == "drv":
-                try:
-                    self.drvTask.cancel()
-                except AttributeError:
-                    pass
-                self.drvTask = loop.create_task(self.drive(operand))
-            
-            # Hier weitere Befehle mit elif ... einfuegen!
-            
-            elif command == "close":
-                print("closing connection...")
-                self.transport.close()
 
-            elif command == "sub":
+            # Hier weitere Befehle mit elif ... einfuegen!
+
+#            if command == "drv":
+#                Steuerung.driveForSec(loop, operand)
+
+            if command == "sub":
                 sensors = operand.split(",")
-                print("subscribing Sensor(s) {}\n".format(sensors))
+                print("Host {} subscribes Sensor(s) {}\n".format(self.peername, sensors))
                 for sen in sensors:
                     try:
-                        sensor,t = sen.split(":")
-                        time = float(t)
-                        if time < 0.1 or time > 3600:
-                            print("Time out of range. Taking default time {}s".format(DefPubDelay))
-                            self.transport.write("err(Time out of range. Taking default time {}s)\n".format(DefPubDelay).encode())
-                            time = DefPubDelay
-                    except ValueError as e:
-                        print("ValueError:" + e.args[0])
-                        # self.transport.write("err({})\n".format(e.args[0]).encode())
-                        sensor = sen
-                        time = DefPubDelay
-                        pass
-                        
-                    try:
-                        if sensor in self.runningSensorTasks:
-                            self.runningSensorTasks[sensor].cancel()
-                        self.runningSensorTasks[sensor] = loop.create_task(self.Send_Sensor_Dat(sensor, SensorDict[sensor], time))
+                        if ":" in sen:
+                            sensor,t = sen.split(":")
+                        else:
+                            sensor = sen
+                            t = False
+
+                        # if already subscribed desubscribe:
+                        if sensor in self.subscribedSensors:
+                            self.subscribedSensors[sensor].desubscribe()
+                        else:
+                            self.subscribedSensors[sensor] = Sensorik.Sensoren[sensor]()
+
+                        # Subscribe:
+                        if t:
+                            self.subscribedSensors[sensor].subscribe(self.SendMsg, True, t)
+                        else:
+                            self.subscribedSensors[sensor].subscribe(self.SendMsg)
+
                     except KeyError:
-                        print("ERROR: unknown sensor '{}'".format(sensor))
-                        self.transport.write("err(sub '{}')\n".format(sensor).encode())
+                        print("ERROR: Unknown sensor '{}'".format(sensor))
+                        self.transport.write("err(sub '{}', unknown sensor!)\n".format(sensor).encode())
                         err = True
                         pass # Falls ein Sensor nicht existiert, sollen die folgenden trotzdem noch abonniert werden
+                    except ValueError as e:
+                        print("ValueError:" + e.args[0])
+                        self.transport.write("err(sub {}: {})\n".format(sensor, e.args[0]).encode())
+                        err = True
+                        pass
                     else:
                         self.transport.write("ack(sub '{}')\n".format(sensor).encode())
 
             elif command == "desub":
                 sensors = operand.split(",")
-                print("desubscribing Sensor(s) {}\n".format(sensors))
+                print("Host {} desubscribes Sensor(s) {}\n".format(self.peername, sensors))
                 for sensor in sensors:
                     try:
-                        self.runningSensorTasks[sensor].cancel()
-                        del self.runningSensorTasks[sensor]
+                        self.subscribedSensors[sensor].desubscribe()
+                        del self.subscribedSensors[sensor]
+                        self.transport.write("ack(desub '{}')\n".format(sensor).encode())
                     except KeyError:
                         print("ERROR: Sensor not subscribed or unknown sensor '{}'".format(sensor))
-                        self.transport.write("err(desub '{}')\n".format(sensor).encode())
+                        self.transport.write("err(desub '{}', sensor not subscribed or unknown sensor)\n".format(sensor).encode())
                         err = True
                         pass # Falls ein Sensor nicht existiert, sollen die folgenden trotzdem noch deabonniert werden
-            
+
+            elif command == "close":
+                print("Closing connection to client {}".format(self.peername))
+                self.transport.close()
+
             else:
                 raise ValueError("unknown command")
 
@@ -168,25 +178,20 @@ class ServerProtocol(asyncio.Protocol):
                 self.transport.write("ack({})\n".format(command).encode())
             err = False
 
-    async def drive(self, speed):
-        DriveFkt(speed)
-        await asyncio.sleep(disableMtrDelay)
-        DriveFkt(0)
-        print("Motor disabled, because there was to long no new drive command")
+    def SendMsg(self, Type, Message, Unit):
+        if DEBUG: print( "Sending Message of Type {} to Host {}: {}".format(Type, self.peername, Message))
+        self.transport.write((str(Type) + "(" + str(Message) + " " + str(Unit) +")\n").encode())
 
-    async def Send_Sensor_Dat(self, sensor, sensorFkt, time):
-        while True:
-            print("Reading Data from Sensor {}".format(sensor))
-            sensorDat = (sensor + "(" + str(sensorFkt()) + ")\n").encode()
-            print("Sending Sensor Data: {}".format(sensorDat))
-            self.transport.write(sensorDat)
-            await asyncio.sleep(time)
-
+    def SendAlert(self, Sensor, Message):
+        if DEBUG: print( "Sending Alert of Sensor {} to Host {}: {}".format(Sensor, self.peername, Message))
+        self.transport.write(("ALERT:" + str(Sensor) + "(" + str(Message) + ")\n").encode())
 
 loop = asyncio.get_event_loop()
 # Each client connection will create a new protocol instance
 coro = loop.create_server(ServerProtocol, IP, PORT)
 server = loop.run_until_complete(coro)
+
+Sensorik.init(loop)
 
 # DEBUGGING:
 async def printCurrentTasks(repeat = False):
@@ -199,7 +204,7 @@ async def printCurrentTasks(repeat = False):
             print(Tasks)
         await asyncio.sleep(repeat)
     return asyncio.Task.all_tasks()
-    
+
 if DEBUG:
     loop.create_task(printCurrentTasks(1))
 
@@ -212,10 +217,13 @@ except KeyboardInterrupt:
     print("Interrupted by user.")
 finally:
     print("Cleaning up...")
-    # Close the server
+    # Close the server:
     server.close()
     loop.run_until_complete(server.wait_closed())
+    print("canceling all asyncio tasks...")
     for task in asyncio.Task.all_tasks():
         print("cancelling task {}".format(task))
         task.cancel()
+    # Stop autorefreshing the sensors:
+    Sensorik.close()
     loop.close()
