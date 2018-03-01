@@ -68,11 +68,14 @@ class ranger:
          self._ping = False
          self.pi.gpio_trigger(self._trig)
          start = time.time()
-         while not self._ping:
-            if (time.time()-start) > 0.07:
-               return -1
-            time.sleep(0.001)
-         return int(self._time / 2000000.0 * 34030)
+         i = 0
+         while not self._ping and i < 9:
+            time.sleep(0.01)
+            i += 1
+         if i == 9:
+             return -1
+         else:
+             return self._time / 2000000 * 34030
       else:
          return None
 
@@ -99,7 +102,7 @@ if __name__ == "__main__":
 
    s = sonar.ranger(pi, 23, 18)
 
-   end = time.time() + 600.0
+   end = time.time() + 60.0
 
    r = 1
    while time.time() < end:

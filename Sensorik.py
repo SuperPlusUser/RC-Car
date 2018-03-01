@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 
-## Version 0.41 (async)
+## Version 0.42 (async)
 #
 ## Changelog:
+#
+# -- 0.4.2 ---
+# - Batt_Mon eingefuegt (alpha)
+# - Standardwerte fuer Sensordaten und Alerts in "None" statt "False" geaendert
 #
 # --- 0.41 ---
 # - Sensoren werden in eigenen Threads aktualisiert --> loop wird nicht blokiert
@@ -15,12 +19,13 @@
 #
 
 ## TODO:
+# - Exception-Handling etc. bei der Seriellen-Verbindung mit dem Batt_Mon verbessern
 # - Testen wie sich das Programm verhaelt, wenn viele Sensoren oft ausgelesen werden
 # - Exceptions etc. in den Tasks werden nicht weitergegeben?!
 # - Kommentierung und Exception-Handling verbessern
 # - Uebersichtlichkeit verbessern
 # - Sensordaten in Datenbank eintragen? --> ermoeglicht (visuelle) Anzeige der Historie etc.
-# - Hin und wieder ist die IP noch nicht ausgelesen, bevor sie angezeigt wird. Es muesste gewartet werden bis der thread fertig ist!
+# - Hin und wieder ist die IP noch nicht ausgelesen, bevor sie angezeigt wird. Es muesste gewartet werden bis der Thread fertig ist!
 
 
 import time
@@ -30,6 +35,7 @@ executor = ThreadPoolExecutor(max_workers=2) # max_workers erhoehen bei Probleme
 import pigpio
 import subprocess
 import asyncio
+import serial
 
 import ina219
 # Quelle: https://github.com/chrisb2/pi_ina219
@@ -84,12 +90,12 @@ def init_disp(loop):
     
 def close():
     cb1.cancel()
-    son.cancel()
     loop.run_until_complete(lcd.init())
     loop.run_until_complete(lcd.clear())
     loop.run_until_complete(lcd.setBacklightOff())
     loop.run_until_complete(loop.shutdown_asyncgens())
     loop.close()
+    Sonar_Sensor.son.cancel()
     pi.stop()
 
 def PrintSensorData(Sensor, Data, Unit):
@@ -136,9 +142,9 @@ class SensorMeta(type):
 
         # Initialisierungen (sollten nicht ueberschrieben werden):
         # In dieser Static Variable werden die zuletzt ausgelesenen Sensor-Daten gespeichert. Solange keine ausgelesen wurden: False
-        new_class.SensorData = False
+        new_class.SensorData = None
         # In dieser Static Variable werden Allert-Nachrichten als String gespeichert. Solange kein Alert vorliegt: False
-        new_class.AlertMsg = False
+        new_class.AlertMsg = None
         # In dieser Liste werden die Funktionen hinterlegt. die bei einem Alert aufgerufen werden.
         new_class.AlertSubscriber = []
                 
@@ -386,21 +392,98 @@ class IP_Addr(Sensor):
         IP = strIP.split('\n')[0]
         return IP
 
-son = sonar.ranger(pi, 23, 24)
+
 class Sonar_Sensor(Sensor):
     NAME = "Distance"
     REFRESH_TIME = 0.1
     UNIT = "cm"
-
+    son = sonar.ranger(pi, 23, 24)
+    
     @classmethod
     def ReadSensorData(cls):
-        return son.read()
+        return "{0:0.1f}".format(cls.son.read())
             
     #@classmethod
     #def CheckAlerts(cls):
     #    if float(cls.SensorData)<10:
     #        return "Obstacle detectetd!"
+    
+class Batt_Mon:
+    REFRESH_TIME = 1 # wird eigentlich durch Batt_Mon vorgegeben, muss hier nur als default subscribe-Zeit angegeben werden!
+    RefreshTask = None
+    ser = serial.Serial('/dev/ttyUSB0', 9600, timeout=2)
+    time.sleep(7) # warten bis Arduino rebootet hat
+    ser.write(b'start')
+    
+    @classmethod
+    def ReadSerial(cls):
+        while cls.ser.is_open:
+            cls.SensorData = cls.ser.readline() # blokiert solange bis eine neue Zeile empfangen wurde
+            cls.ser.reset_input_buffer()        # Sichergehen, dass nur neue Werte gelesen werden
+            for subcls in cls.__subclasses__():
+                subcls.Refresh()
+    
+    @classmethod
+    def _AutoRefresh(cls):
+        if not Batt_Mon.RefreshTask:
+            Batt_Mon.RefreshTask = loop.run_in_executor(executor, Batt_Mon.ReadSerial)
+        
+class Batt_Mon_Voltage(Batt_Mon, Sensor):
+    NAME = "Batt.-Voltage"
+    UNIT = "V"
+    #REFRESH_TIME wird durch Batt_Mon vorgegeben!
 
+    @classmethod
+    def ReadSensorData(cls):
+        Start = Batt_Mon.SensorData.find(b'V: ') + 3
+        End = Batt_Mon.SensorData.find(b',', Start)
+        return Batt_Mon.SensorData[Start : End].decode()
+            
+    #@classmethod
+    #def CheckAlerts(cls):
+    
+class Batt_Mon_Current(Batt_Mon, Sensor):
+    NAME = "Batt.-Current"
+    UNIT = "A"
+    #REFRESH_TIME wird durch Batt_Mon vorgegeben!
+
+    @classmethod
+    def ReadSensorData(cls):
+        Start = Batt_Mon.SensorData.find(b'A: ') + 3
+        End = Batt_Mon.SensorData.find(b',', Start)
+        return Batt_Mon.SensorData[Start : End].decode()
+            
+    #@classmethod
+    #def CheckAlerts(cls):
+    
+class Batt_Mon_Charge(Batt_Mon, Sensor):
+    NAME = "Batt.-Charge"
+    UNIT = "mAh"
+    #REFRESH_TIME wird durch Batt_Mon vorgegeben!
+
+    @classmethod
+    def ReadSensorData(cls):
+        Start = Batt_Mon.SensorData.find(b'C: ') + 3
+        End = Batt_Mon.SensorData.find(b',', Start)
+        return Batt_Mon.SensorData[Start : End].decode()
+            
+    #@classmethod
+    #def CheckAlerts(cls):
+
+class Batt_Mon_Temp(Batt_Mon, Sensor):
+    NAME = "Batt.-Temp"
+    UNIT = "°C"
+    #REFRESH_TIME wird durch Batt_Mon vorgegeben!
+
+    @classmethod
+    def ReadSensorData(cls):
+        Start = Batt_Mon.SensorData.find(b'T: ') + 3
+        End = Batt_Mon.SensorData.find(b'\r', Start)
+        return Batt_Mon.SensorData[Start : End].decode()
+            
+    #@classmethod
+    #def CheckAlerts(cls):
+    
 # Hier weitere konkrete Sensoren nach obigen Beispielen einfuegen...
 
 # ---------------------------
