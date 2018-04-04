@@ -102,7 +102,7 @@ class ServerProtocol(asyncio.Protocol):
 
         try:
             try:
-                command = message[:message.index("(")]
+                command = message[2:message.index("(")]
                 operand = message[message.index("(")+1 : message.index(")")]
             except ValueError:
                 raise ValueError("wrong format. try 'command(operand)'")

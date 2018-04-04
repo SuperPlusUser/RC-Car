@@ -1,21 +1,14 @@
-//SRCCP//v0.1
-length:136
-
----START---
-<command>
+'\x00\x9d'/SRCCP/v0.1/#<command>
     <name>subscribe</name>
     <type>data</type>
-    <sensor interval="10">2</sensor>
-    <sensor>Distance</sensor>
+    <sensor interval="10">Sensor1</sensor>
+    <sensor>Sensor2</sensor>
 </command>
----END---
+#/
 
-//SRCCP//v0.1
-length:66
-
----START---
+'\x00\x4e'/SRCCP/#
 <command>
     <name>drive</name>
     <speed>100</speed>
 </command>
----END---
+#/
