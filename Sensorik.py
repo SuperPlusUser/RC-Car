@@ -19,6 +19,7 @@
 #
 
 ## TODO:
+# - Severity bei Alerts einbauen!
 # - Exception-Handling etc. bei der Seriellen-Verbindung mit dem Batt_Mon verbessern
 # - Testen wie sich das Programm verhaelt, wenn viele Sensoren oft ausgelesen werden
 # - Exceptions etc. in den Tasks werden nicht weitergegeben?!
