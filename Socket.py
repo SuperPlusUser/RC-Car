@@ -5,6 +5,7 @@
 ## Changelog:
 # --- 0.4.1 ---
 # - Restliche Befehle implementiert
+# - weitere Kommentare eingefuegt
 
 # --- 0.4 ---
 # - Umstellung auf neue Protokoll-Definition (neuer Header etc.)
@@ -74,16 +75,19 @@ WELCOME_MSG = """
 
 """
 
-class ServerProtocol(asyncio.Protocol):
+class SRCCP(asyncio.Protocol):
     """
-    Implementierung eines eigenen Netzwerkprotokol, indem die Methoden der Basisklasse
-    "asyncio.Protocol" ueberschrieben werden.
+    Implementierung des eigenen Netzwerkprotokolls "Smart RC Car Protocol", in dem die Methoden der Basisklasse
+    "asyncio.Protocol" ueberschrieben und erweitert werden.
     weitere Infos: https://docs.python.org/3/library/asyncio-protocol.html?highlight=protocol#protocols
     """
+    
     def __init__(self):
+        """Konstruktor"""
         self.subscribedSensors = {}
 
     def connection_made(self, transport):
+        """wird bei jedem neuen Verbindungsaufbau aufgerufen."""
         self.peername = transport.get_extra_info('peername')
         print("Connection from {}".format(self.peername))
         self.transport = transport
@@ -94,6 +98,7 @@ class ServerProtocol(asyncio.Protocol):
             Sensorik.Sensoren[Sen].SubscribeAlerts(self.SendAlert)
 
     def connection_lost(self, exc):
+        """Wird beim (erwarteten oder unerwarteten) Verbindungsabbruch ausgefuehrt."""
         print("Client {} closed the connection".format(self.peername))
         for sensor in list(self.subscribedSensors):
             print("cancel publishing value of sensor {} to {}".format(sensor,self.peername))
@@ -104,6 +109,11 @@ class ServerProtocol(asyncio.Protocol):
             Sensorik.Sensoren[Sen].DesubscribeAlerts(self.SendAlert)
 
     def data_received(self, receivedData):
+        """
+        Wird immer aufgerufen, wenn Daten ("receiveData") von einem verbundenen Client empfangen wird.
+        Die empfangenen Daten werden dann ausgewährtet und auf bekannte Muster geprueft.
+        Bei korrekt empfangenen und bekannten Nachrichten wird die gewuenschte Aktion ausgeloest.
+        """
         print("Data received from Host {}: {!r}\nTrying to decode and parse...".format(self.peername, receivedData))
 
         readPos = 0
@@ -135,7 +145,6 @@ class ServerProtocol(asyncio.Protocol):
                     readPos += (length + 2) 
                     
                     headerEnd = frame.find(b'/#', 7)
-
                     header = frame[ : headerEnd]       
                     
                     message = frame[headerEnd+2 : -2].decode()
@@ -220,9 +229,14 @@ class ServerProtocol(asyncio.Protocol):
                         self.SendNACK(command)
             else:
                 #print('unknown protocol!\n') # kann sehr Ressourcen-fressend werden, falls viele unbekannte Daten empfangen werden!
-                readPos += 1
+                readPos += 1 #gehe einfach zum naechsten Zeichen und suche weiter nach bekannten Mustern...
 
     def SendMsg(self, Sensor, Message, Unit=None):
+        """
+        Diese Funktion packt die Sensordaten eines Sensors und optional die zugehoerige Einheit in eine XML
+        und sendet diese XML als SRCCP-Paket an den Client, der den Sensor subscribed hat.
+        """
+        
         if DEBUG: print( "Sending Message of Sensor '{}' to Host '{}': '{}'".format(Sensor, self.peername, Message))
         #self.transport.write((str(Type) + "(" + str(Message) + " " + str(Unit) +")\n").encode())
         root = ET.Element('msg')
@@ -242,6 +256,10 @@ class ServerProtocol(asyncio.Protocol):
         
 
     def SendAlert(self, Sensor, Message):
+        """
+        Diese Funktion sendet eine Alert-Message eines Sensors an die Subscriber,
+        indem sie eine XML erstellt und diese als SRCCP-Paket verschickt.
+        """
         if DEBUG: print( "Sending Alert of Sensor '{}' to Host '{}': '{}'".format(Sensor, self.peername, Message))
         root = ET.Element('msg')
         name = ET.SubElement(root, 'name')
@@ -260,6 +278,9 @@ class ServerProtocol(asyncio.Protocol):
         
         
     def SendACK(self, command):
+        """
+        Sendet ein acknowledgement
+        """
         root = ET.Element('ctlmsg')
         name = ET.SubElement(root, 'name')
         name.text = "ack"
@@ -272,6 +293,9 @@ class ServerProtocol(asyncio.Protocol):
 
     
     def SendNACK(self, Type, Errormsg = None):
+        """
+        Sendet ein NOTAcknowledgement
+        """
         root = ET.Element('ctlmsg')
         name = ET.SubElement(root, 'name')
         name.text = "nack"
@@ -287,6 +311,10 @@ class ServerProtocol(asyncio.Protocol):
         
     
     def SendSRCCPPacket(self, XML):
+        """
+        Packt ein uebergebenes XML (oder eine andere Nachricht) in ein SRCCP-Paket,
+        indem es den notwendigen Rahmen inklusive Paketgroesse hinzufuegt.
+        """
         frame = b'/SRCCP/v0.1/#' + XML + b'#/'
         length = len(frame).to_bytes(2, "big")
         Packet = length + frame

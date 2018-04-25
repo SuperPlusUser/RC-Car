@@ -1,1 +1,1 @@
-echo -e '\x00\x7F/SRCCP/v0.1/#<cmd><name>subscribe</name><type>data</type><sensor interval="10">Sensor1</sensor><sensor>Sensor2</sensor></cmd>#/' | nc 127.0.0.1 8889 -q 10
+echo -e '\x00\x79/SRCCP/v0.1/#<cmd><name>subscribe</name><type>data</type><sensor interval="10">1</sensor><sensor>Sensor2</sensor></cmd>#/' | nc 127.0.0.1 8889 -q 10
