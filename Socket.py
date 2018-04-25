@@ -407,7 +407,7 @@ class SRCCP(asyncio.Protocol):
 
 loop = asyncio.get_event_loop()
 # Each client connection will create a new protocol instance
-coro = loop.create_server(ServerProtocol, IP, PORT)
+coro = loop.create_server(SRCCP, IP, PORT)
 server = loop.run_until_complete(coro)
 
 Sensorik.init(loop)

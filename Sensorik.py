@@ -324,7 +324,7 @@ class Sensor(metaclass=SensorMeta):
 # --------------------------------
 
 class IP_Addr(Sensor):
-    """virtueller Sensor, der die IP-Addresse der WLAN-Schnittstelle zurueckgiebt."""
+    """virtueller Sensor, der die IP-Adresse der WLAN-Schnittstelle zurueckgiebt."""
     NAME = "IP-Address"
     REFRESH_TIME = False
     UNIT = ""
