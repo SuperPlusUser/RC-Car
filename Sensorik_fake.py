@@ -254,9 +254,10 @@ class Sensor2(Sensor):
 
     @classmethod
     def CheckAlerts(cls):
-        if int(cls.SensorData) > 10:
-            return "Value of Sensor2 over 10: {}".format(cls.SensorData)
-        else: return False
+        #if int(cls.SensorData) > 10:
+        #    return "Value of Sensor2 over 10: {}".format(cls.SensorData)
+        #else:
+        return False
 
 class Sensor3(Sensor):
     NAME = "3"

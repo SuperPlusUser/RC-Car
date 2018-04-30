@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 
-## Version 0.3 (XML alpha)
+## Version 0.4.1 (XML alpha)
 
 ## Changelog:
+# --- 0.4.1 ---
+# - Restliche Befehle implementiert
+# - weitere Kommentare eingefuegt
+
+# --- 0.4 ---
+# - Umstellung auf neue Protokoll-Definition (neuer Header etc.)
+# - Senden von Nachrichten im XML-Format eingebaut
 #
 # --- 0.3 ---
 # - XML testweise integriert (nur empfangen und nur Befehle subscribe und drive)
@@ -23,20 +30,21 @@
 # - Im Debugging-Modus starten bei Aufruf mit dem Parameter "-d"
 
 ## TODO:
-# - Nachrichten im XML-Format schicken
-# - restliche Befehle implementieren
+# - TESTEN!!!
+# - Error-Messages (NACK) spezifiezeieren uns festlegen, was bei einem NACK unternommen wird
+# - Standardmaessig alle Alerts subscriben?!
 # - Warum funktionieren manchmal keine KeyboardInterrupts?
 # - Kommentierung und Exception-Handling verbessern
 # - Uebersichtlichkeit verbessern
-# - Ueberlegen, was passieren soll, falls ein Paket aufgeteilt wird
+# - Ueberlegen, was passieren soll, falls ein Paket aufgeteilt wird?!
 
 
 import asyncio
 import sys
 import xml.etree.ElementTree as ET
 
-import Sensorik
-import Steuerung
+import Sensorik_fake as Sensorik
+import Steuerung_fake as Steuerung
 
 IP = ""
 PORT = 8889
@@ -67,26 +75,30 @@ WELCOME_MSG = """
 
 """
 
-class ServerProtocol(asyncio.Protocol):
+class SRCCP(asyncio.Protocol):
     """
-    Implementierung eines eigenen Netzwerkprotokol, indem die Methoden der Basisklasse
-    "asyncio.Protocol" ueberschrieben werden.
+    Implementierung des eigenen Netzwerkprotokolls "Smart RC Car Protocol", in dem die Methoden der Basisklasse
+    "asyncio.Protocol" ueberschrieben und erweitert werden.
     weitere Infos: https://docs.python.org/3/library/asyncio-protocol.html?highlight=protocol#protocols
     """
+    
     def __init__(self):
+        """Konstruktor"""
         self.subscribedSensors = {}
 
     def connection_made(self, transport):
+        """wird bei jedem neuen Verbindungsaufbau aufgerufen."""
         self.peername = transport.get_extra_info('peername')
         print("Connection from {}".format(self.peername))
         self.transport = transport
-        self.transport.write(WELCOME_MSG.encode())
-
+        self.SendMsg("system", WELCOME_MSG)
+        #TODO: Standardmaessig alle Alerts subscriben?!
         # Subscribe Alerts from all Sensors:
         for Sen in Sensorik.Sensoren:
             Sensorik.Sensoren[Sen].SubscribeAlerts(self.SendAlert)
 
     def connection_lost(self, exc):
+        """Wird beim (erwarteten oder unerwarteten) Verbindungsabbruch ausgefuehrt."""
         print("Client {} closed the connection".format(self.peername))
         for sensor in list(self.subscribedSensors):
             print("cancel publishing value of sensor {} to {}".format(sensor,self.peername))
@@ -97,37 +109,49 @@ class ServerProtocol(asyncio.Protocol):
             Sensorik.Sensoren[Sen].DesubscribeAlerts(self.SendAlert)
 
     def data_received(self, receivedData):
+        """
+        Wird immer aufgerufen, wenn Daten ("receiveData") von einem verbundenen Client empfangen wird.
+        Die empfangenen Daten werden dann ausgewährtet und auf bekannte Muster geprueft.
+        Bei korrekt empfangenen und bekannten Nachrichten wird die gewuenschte Aktion ausgeloest.
+        """
         print("Data received from Host {}: {!r}\nTrying to decode and parse...".format(self.peername, receivedData))
 
         readPos = 0
         while readPos < len(receivedData):
             
-            received = receivedData[readPos : ]
-            
-            #gehe die empfangenen bytes solange durch bis "//SRCCP//" gefunden wird
-            if received.startswith(b'//SRCCP//'):
+            #gehe die empfangenen bytes solange durch bis "/SRCCP/" gefunden wird
+            if receivedData[readPos+2 : readPos+9] == b'/SRCCP/':
                 
                 try:
-                    headerEnd = received.find(b'\n---START---\n')
-                    messageBegin = headerEnd + 13 # len(b'\n---START---\n')
-
-                    header = received[0 : headerEnd].decode()
-                                
-                    lengthPos = header.find('length:')
-                    length = int(header[lengthPos + len('length:') : header.find('\n', lengthPos)])
+                    length = int.from_bytes(receivedData[readPos : readPos+2], "big")
+        
+                    frame = receivedData[readPos+2 : readPos+length+2]
                     
-                    messageEnd = messageBegin + length
-                    
-                    if not received[messageEnd : messageEnd + 11] == b'\n---END---\n':
-                        readPos += 1
-                        raise ValueError("invalid length or incomplete data received! Ignoring packet...")
-                        
-                    else:
-                        message = received[messageBegin : messageEnd].decode()                    
-                        readPos += messageEnd + 11
-                        
-                        print("----------------------")
+                    print("----------------------")
+                    if DEBUG: 
                         print("Received SRCCP-Packet:")
+                        print("parsed length: ", length)   
+                        print("parsed frame: ", frame)
+                    
+                    if not frame.endswith(b'#/'):
+                        print("ERROR: Wrong length or incomplete data received!")
+                        print("----------------------")
+                        self.SendNACK("TransmissionError", "Incomplete or malformed packet received")
+                        # suche weiter nach einem Paket...
+                        readPos += 1
+                        continue
+                    
+                    
+                    readPos += (length + 2) 
+                    
+                    headerEnd = frame.find(b'/#', 7)
+                    header = frame[ : headerEnd]       
+                    
+                    message = frame[headerEnd+2 : -2].decode()
+                    
+                    ack = 0
+                    
+                    if DEBUG:    
                         print("header =\n", header)
                         print("---")
                         print("parsed length = ", length)
@@ -135,60 +159,172 @@ class ServerProtocol(asyncio.Protocol):
                         print("message =\n", message)
                         print("---")
                         print("parsing XML...")
+                       
+                    root = ET.fromstring(message)
                         
-                        root = ET.fromstring(message)
+                    if root.tag == "cmd":
+                        command = root.find("name").text
+                        print("command received: ", command)
+                            
+                        if command == "drive":
+                            speed = root.find("speed").text
+                            ack += Steuerung.drive(int(speed))
+                            
+                        elif command == "brake":
+                            ack += Steuerung.brake()
+                            
+                        elif command == "steer":
+                            angle = root.find("angle").text
+                            if DEBUG:
+                                print("Steering to ", angle)
+                            ack += Steuerung.steer(angle)
+                                
+                        elif command == "subscribe":
+                            if root.find("type").text == "data":
+                                for Sen in root.findall("sensor"):
+                                    ack += self.subscribeSensor(Sen.text, Sen.get("interval"))
+                                    
+                            elif root.find("type").text == "alert":
+                                for Sen in root.findall("sensor"):
+                                    ack += self.subscribeAlert(Sen.text)
+                                          
+                        elif command == "desubscribe":
+                            if root.find("type").text == "data":
+                                for sensor in root.findall("sensor"):
+                                    ack += self.desubscribeSensor(sensor)
+                                        
+                            elif root.find("type").text == "alert":
+                                for sensor in root.findall("sensor"):
+                                    ack += self.desubscribeAlerts(sensor)
                         
-                        if root.tag == "command":
-                            print("command received:")
-                            command = root.find("name").text
-                            print(command)
-                            
-                            if command == "drive":
-                                speed = root.find("speed").text
-                                if DEBUG:
-                                    print("Set speed to ", speed)
-                                Steuerung.drive(int(speed))
+                        elif command == "close":
+                            print("Client '{}' closed the connection".format(self.peername))
+                            self.transport.close()
+
                                 
-                            if command == "subscribe":
-                                if root.find("type").text == "data":
-                                    for Sen in root.findall("sensor"):
-                                        self.subscribeSensor(Sen.text, Sen.get("interval"))
-                                
-                        elif root.tag == "message":
-                            print("message received, nothing to do here...")
+                    elif root.tag == "msg":
+                        print("message received, nothing to do here...")
                             
-                        elif root.tag == "ctlmsg":
-                            print("controlmessage received")
-                            # TODO
+                    elif root.tag == "ctlmsg":
+                        print("controlmessage received. ERROR: Not implemented yet!")
+                        # TODO: z.B. bei NACK Fehlermeldung auswerten und Nachricht evtl wiederholen?!
                             
-                        else:
-                            raise ValueError("unknown message")
+                    else:
+                        raise ValueError("unknown message")
                             
-                        print("----------------------")
+                    print("----------------------")
                         
                 except ValueError as e:
                     print("ValueError:" + e.args[0])
-                    self.transport.write("err({})\n".format(e.args[0]).encode())
+                    #self.transport.write("err({})\n".format(e.args[0]).encode())
+                    self.SendNACK(command, e.args[0])
                 except KeyError as e:
                     print("KeyError:" + e.args[0])
-                    self.transport.write("err({})\n".format(e.args[0]).encode())
+                    #self.transport.write("err({})\n".format(e.args[0]).encode())
+                    self.SendNACK(command, e.args[0])
                 else:
-                    self.transport.write("ack({})\n".format(command).encode())
+                    if ack == 0:
+                        self.SendACK(command)
+                    else:
+                        self.SendNACK(command)
             else:
                 #print('unknown protocol!\n') # kann sehr Ressourcen-fressend werden, falls viele unbekannte Daten empfangen werden!
-                readPos += 1
+                readPos += 1 #gehe einfach zum naechsten Zeichen und suche weiter nach bekannten Mustern...
 
-    def SendMsg(self, Type, Message, Unit):
-        if DEBUG: print( "Sending Message of Type {} to Host {}: {}".format(Type, self.peername, Message))
-        self.transport.write((str(Type) + "(" + str(Message) + " " + str(Unit) +")\n").encode())
+    def SendMsg(self, Sensor, Message, Unit=None):
+        """
+        Diese Funktion packt die Sensordaten eines Sensors und optional die zugehoerige Einheit in eine XML
+        und sendet diese XML als SRCCP-Paket an den Client, der den Sensor subscribed hat.
+        """
+        
+        if DEBUG: print( "Sending Message of Sensor '{}' to Host '{}': '{}'".format(Sensor, self.peername, Message))
+        #self.transport.write((str(Type) + "(" + str(Message) + " " + str(Unit) +")\n").encode())
+        root = ET.Element('msg')
+        name = ET.SubElement(root, 'name')
+        name.text = "sensordata"
+        sensor = ET.SubElement(root, 'sensor')
+        sensor.text = Sensor
+        data = ET.SubElement(root, 'data')
+        data.text = Message
+        if Unit:
+            unit = ET.SubElement(root, 'unit')
+            unit.text = Unit
+        xml = ET.tostring(root)
+        if DEBUG:
+            print("sending xml:\n", xml)
+        self.SendSRCCPPacket(xml)
+        
 
     def SendAlert(self, Sensor, Message):
-        if DEBUG: print( "Sending Alert of Sensor {} to Host {}: {}".format(Sensor, self.peername, Message))
-        self.transport.write(("ALERT:" + str(Sensor) + "(" + str(Message) + ")\n").encode())
+        """
+        Diese Funktion sendet eine Alert-Message eines Sensors an die Subscriber,
+        indem sie eine XML erstellt und diese als SRCCP-Paket verschickt.
+        """
+        if DEBUG: print( "Sending Alert of Sensor '{}' to Host '{}': '{}'".format(Sensor, self.peername, Message))
+        root = ET.Element('msg')
+        name = ET.SubElement(root, 'name')
+        name.text = "alert"
+        sensor = ET.SubElement(root, 'sensor')
+        sensor.text = Sensor
+        #TODO: Severity einbauen!
+        severity = ET.SubElement(root, 'severity')
+        severity.text = "1"
+        message = ET.SubElement(root, 'message')
+        message.text = Message
+        xml = ET.tostring(root)
+        if DEBUG:
+            print("sending xml:\n", xml)
+        self.SendSRCCPPacket(xml)
+        
+        
+    def SendACK(self, command):
+        """
+        Sendet ein acknowledgement
+        """
+        root = ET.Element('ctlmsg')
+        name = ET.SubElement(root, 'name')
+        name.text = "ack"
+        type = ET.SubElement(root, 'type')
+        type.text = command
+        xml = ET.tostring(root)
+        if DEBUG:
+            print("sending ACK to Host '{}':\n {}".format(self.peername, xml))
+        self.SendSRCCPPacket(xml)
+
+    
+    def SendNACK(self, Type, Errormsg = None):
+        """
+        Sendet ein NOTAcknowledgement
+        """
+        root = ET.Element('ctlmsg')
+        name = ET.SubElement(root, 'name')
+        name.text = "nack"
+        type = ET.SubElement(root, 'type')
+        type.text = Type
+        if Errormsg:
+            errormsg = ET.SubElement(root, 'message')
+            errormsg.text = Errormsg
+        xml = ET.tostring(root)
+        if DEBUG:
+            print("sending NACK to Host '{}':\n {}".format(self.peername, xml))
+        self.SendSRCCPPacket(xml)
+        
+    
+    def SendSRCCPPacket(self, XML):
+        """
+        Packt ein uebergebenes XML (oder eine andere Nachricht) in ein SRCCP-Paket,
+        indem es den notwendigen Rahmen inklusive Paketgroesse hinzufuegt.
+        """
+        frame = b'/SRCCP/v0.1/#' + XML + b'#/'
+        length = len(frame).to_bytes(2, "big")
+        Packet = length + frame
+        if DEBUG: print("Sending SRCCP-Packet to Host '{}':\n {}".format(self.peername, Packet))
+        self.transport.write(Packet)
+        
         
     def subscribeSensor(self, sensor, refreshtime = None):
         try:
-            # if already subscribed desubscribe:
+            # if already subscribed desubscribe first:
             if sensor in self.subscribedSensors:
                 self.subscribedSensors[sensor].desubscribe()
             else:
@@ -196,23 +332,82 @@ class ServerProtocol(asyncio.Protocol):
 
             # Subscribe:
             if refreshtime:
+                if DEBUG: print("Host {} subscribes Sensor '{}' with refresh time {}\n".format(self.peername, sensor, refreshtime))
                 self.subscribedSensors[sensor].subscribe(self.SendMsg, True, refreshtime)
             else:
+                if DEBUG: print("Host {} subscribes Sensor '{}' with default refresh time\n".format(self.peername, sensor))
                 self.subscribedSensors[sensor].subscribe(self.SendMsg)
-
+        
         except KeyError:
             print("ERROR: Unknown sensor '{}'".format(sensor))
-            self.transport.write("err(sub '{}', unknown sensor!)\n".format(sensor).encode())
+            self.SendNACK("subscribe", "unknown sensor {}".format(sensor))
+            return 1
         except ValueError as e:
             print("ValueError:" + e.args[0])
-            self.transport.write("err(sub {}: {})\n".format(sensor, e.args[0]).encode())
+            self.SendNACK("subscribe", e.args[0])
+            return 1
+        except:
+            print("OtherError:" + e.args[0])
+            self.SendNACK("subscribe", e.args[0])
+            return 1
         else:
-            self.transport.write("ack(sub '{}')\n".format(sensor).encode())
+            return 0
+        
+    def subscribeAlert(self, sensor):
+        if DEBUG: print("Host {} subscribes Alerts from Sensor {}\n".format(self.peername, Sen))
+        
+        try:
+            Sensorik.Sensoren[sensor].SubscribeAlerts(self.SendAlert)
+        
+        except KeyError:
+            print("KeyError: Unknown sensor '{}'".format(sensor))
+            self.SendNACK("subscribe", "unknown sensor {}".format(sensor))
+            return 1
+        except ValueError as e:
+            print("ValueError:" + e.args[0])
+            self.SendNACK("subscribe", e.args[0])
+            return 1
+        except:
+            print("OtherError:" + e.args[0])
+            self.SendNACK("subscribe", e.args[0])
+            return 1
+        else:
+            return 0
+        
+        
+    def desubscribeSensor(self, sensor):
+        try:
+            if DEBUG: print("Host {} desubscribes Sensor {}\n".format(self.peername, sensor))
+            self.subscribedSensors[sensor].desubscribe()
+            del self.subscribedSensors[sensor]
+        except KeyError:
+            print("KeyError: Sensor not subscribed or unknown sensor '{}'".format(sensor))
+            self.SendNACK("desubscribe", "Sensor not subscribed or unknown sensor '{}'".format(sensor))
+            return 1
+        else:
+            return 0
+        
+    def desubscribeAlerts(self, sensor):
+        try:
+            if DEBUG: print("Host {} desubscribes Alerts from Sensor {}\n".format(self.peername, sensor))
+            Sensorik.Sensoren[sensor].DesubscribeAlerts(self.SendAlert)
+            del self.subscribedSensors[sensor]
+        except KeyError:
+            print("KeyError: Sensor not subscribed or unknown sensor '{}'".format(sensor))
+            self.SendNACK("desubscribe", "Sensor not subscribed or unknown sensor '{}'".format(sensor))
+            return 1
+        except:
+            print("OtherError while desubscribing alerts from sensor '{}'".format(sensor))
+            self.SendNACK("desubscribe", e.args[0])
+            return 1
+        else:
+            return 0
+
 
 
 loop = asyncio.get_event_loop()
 # Each client connection will create a new protocol instance
-coro = loop.create_server(ServerProtocol, IP, PORT)
+coro = loop.create_server(SRCCP, IP, PORT)
 server = loop.run_until_complete(coro)
 
 Sensorik.init(loop)
@@ -230,7 +425,7 @@ async def printCurrentTasks(repeat = False):
     return asyncio.Task.all_tasks()
 
 if DEBUG:
-    loop.create_task(printCurrentTasks(1))
+    loop.create_task(printCurrentTasks(10))
     # Enable Debugging mode of asyncio:
     loop.set_debug(True)
     import logging

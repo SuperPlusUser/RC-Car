@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 
-## Version 0.42 (async)
+## Version 0.4.3 (UNGETESTET!)
 #
 ## Changelog:
 #
-# -- 0.4.2 ---
+# --- 0.4.3 ---
+# - Kommentierung verbessert
+# - INA219 entfernt (Ersetzt durch Battery Monitor)
+# - Alerts hinzugefuegt
+#
+# --- 0.4.2 ---
 # - Batt_Mon eingefuegt (alpha)
 # - Standardwerte fuer Sensordaten und Alerts in "None" statt "False" geaendert
 #
@@ -19,6 +24,7 @@
 #
 
 ## TODO:
+# - Severity bei Alerts einbauen!
 # - Exception-Handling etc. bei der Seriellen-Verbindung mit dem Batt_Mon verbessern
 # - Testen wie sich das Programm verhaelt, wenn viele Sensoren oft ausgelesen werden
 # - Exceptions etc. in den Tasks werden nicht weitergegeben?!
@@ -37,17 +43,13 @@ import subprocess
 import asyncio
 import serial
 
-import ina219
-# Quelle: https://github.com/chrisb2/pi_ina219
-
 import sonar
-
 import lcd
 
 
 DEBUG = True if "-d" in sys.argv else False
 
-
+DISP_BUTTON = 21
 pi = pigpio.pi()          # pigpiod muss im Hintergrund laufen!
 
 # ---------------------------
@@ -64,19 +66,21 @@ def init(_loop):
         Sensoren[subcl.NAME] = subcl
     # Zusaetzlich eine SensorListe erstellen, ueber die iteriert werden kann:
     SensorenList = list(Sensoren.values())   
+    
     for Sen in Sensoren:
         # Start Refresh-Tasks:
         Sensoren[Sen]._AutoRefresh()
         # Print all Allerts to StdOut:
         Sensoren[Sen].SubscribeAlerts(PrintAlerts)
         # Display all Alerts at Display:
-        Sensoren[Sen].SubscribeAlerts(DisplayAlert)       
+        Sensoren[Sen].SubscribeAlerts(DisplayAlert)
+        
     # Display initialisieren:
     init_disp(loop)
     # Callback registrieren, um bei Knopfdruck den naechsten Sensor auf dem Display anzuzeigen:
-    pi.set_mode(20, pigpio.INPUT)
-    pi.set_pull_up_down(20, pigpio.PUD_UP)
-    cb1 = pi.callback(20, pigpio.RISING_EDGE, DisplayNextSensorData)
+    pi.set_mode(DISP_BUTTON, pigpio.INPUT)
+    pi.set_pull_up_down(DISP_BUTTON, pigpio.PUD_UP)
+    cb1 = pi.callback(DISP_BUTTON, pigpio.FALLING_EDGE, DisplayNextSensorData)
 
 def init_disp(loop):
     global DispSenNr, DispSen, lastTick, DispAlert
@@ -141,9 +145,9 @@ class SensorMeta(type):
         new_class = super(SensorMeta, cls).__new__(cls, name, bases, attrs)
 
         # Initialisierungen (sollten nicht ueberschrieben werden):
-        # In dieser Static Variable werden die zuletzt ausgelesenen Sensor-Daten gespeichert. Solange keine ausgelesen wurden: False
+        # In dieser Static Variable werden die zuletzt ausgelesenen Sensor-Daten gespeichert. Solange keine ausgelesen wurden: None
         new_class.SensorData = None
-        # In dieser Static Variable werden Allert-Nachrichten als String gespeichert. Solange kein Alert vorliegt: False
+        # In dieser Static Variable werden Alert-Nachrichten als String gespeichert. Solange kein Alert vorliegt: FNone
         new_class.AlertMsg = None
         # In dieser Liste werden die Funktionen hinterlegt. die bei einem Alert aufgerufen werden.
         new_class.AlertSubscriber = []
@@ -202,10 +206,12 @@ class Sensor(metaclass=SensorMeta):
             cls.SensorData = cls.ReadSensorData()
         except Exception as e: #TODO: Exception-Handling verbessern
             print("ERROR while reading Data from Sensor {}: {}!".format(cls.NAME, e))
-            cls.AlertMsg = "Error while reading Data from Sensor {}: {}!".format(cls.NAME, e)
+            cls.NewAlertMsg = "Error while reading Data from Sensor {}: {}!".format(cls.NAME, e)
         else:
-            cls.AlertMsg = cls.CheckAlerts()
-        if cls.AlertMsg:                # Bei jedem Refresh werden, falls vorhanden, Alert-Nachrichten verschickt
+            cls.NewAlertMsg = cls.CheckAlerts()
+        if cls.NewAlertMsg and cls.NewAlertMsg != cls.AlertMsg:
+            # Bei jedem Refresh werden, falls vorhanden, neue Alert-Nachrichten verschickt
+            cls.AlertMsg = cls.NewAlertMsg
             cls.Alert()
 
     @classmethod
@@ -317,68 +323,8 @@ class Sensor(metaclass=SensorMeta):
 ## --- konkrete Sensor-Klassen ---
 # --------------------------------
 
-SHUNT_OHMS = 0.1
-ina = ina219.INA219(SHUNT_OHMS)
-ina.configure()
-
-class INA219_Current(Sensor):
-    NAME = "Current"
-    REFRESH_TIME = 1
-    UNIT = "A"
-    e = False
-
-    @classmethod
-    def ReadSensorData(cls):
-        try:
-            return "{0:0.3f}".format(ina.current()/1000)
-        except ina219.DeviceRangeError as e:
-            cls.e = e
-            print(e)
-            
-    @classmethod
-    def CheckAlerts(cls):
-        return cls.e
-    
-class INA219_Voltage(Sensor):
-    NAME = "Voltage"
-    REFRESH_TIME = 1
-    UNIT = "V"
-    e = False
-
-    @classmethod
-    def ReadSensorData(cls):
-        try:
-            return "{0:0.3f}".format(ina.voltage())
-        except ina219.DeviceRangeError as e:
-            cls.e = e
-            print(e)
-            
-    @classmethod
-    def CheckAlerts(cls):
-        if cls.e:
-            return cls.e
-        #if float(cls.SensorData) < 10:
-        #    return "Low Voltage {} {}!".format(cls.SensorData[0:4], cls.UNIT)
-    
-class INA219_Power(Sensor):
-    NAME = "Power"
-    REFRESH_TIME = 1
-    UNIT = "W"
-    e = False
-
-    @classmethod
-    def ReadSensorData(cls):
-        try:
-            return "{0:0.3f}".format(ina.power()/1000)
-        except ina219.DeviceRangeError as e:
-            cls.e = e
-            print(e)
-            
-    @classmethod
-    def CheckAlerts(cls):
-        return cls.e
-
 class IP_Addr(Sensor):
+    """virtueller Sensor, der die IP-Adresse der WLAN-Schnittstelle zurueckgiebt."""
     NAME = "IP-Address"
     REFRESH_TIME = False
     UNIT = ""
@@ -397,22 +343,28 @@ class Sonar_Sensor(Sensor):
     NAME = "Distance"
     REFRESH_TIME = 0.1
     UNIT = "cm"
-    son = sonar.ranger(pi, 23, 24)
+    
+    SONAR_TRIGGER = 23
+    SONAR_ECHO = 24
+    son = sonar.ranger(pi, SONAR_TRIGGER, SONAR_ECHO)
     
     @classmethod
     def ReadSensorData(cls):
-        return "{0:0.1f}".format(cls.son.read())
+        return float("{0:0.1f}".format(cls.son.read()))
             
-    #@classmethod
-    #def CheckAlerts(cls):
-    #    if float(cls.SensorData)<10:
-    #        return "Obstacle detectetd!"
-    
+    @classmethod
+    def CheckAlerts(cls):
+        if cls.SensorData < 10 and cls.Sensor.Data > 0:
+            return "Obstacle detectetd"
+        else:
+            return False
+  
+# -- Battery Monitor --
 class Batt_Mon:
-    REFRESH_TIME = 1 # wird eigentlich durch Batt_Mon vorgegeben, muss hier nur als default subscribe-Zeit angegeben werden!
+    REFRESH_TIME = 1 # wird eigentlich durch Batt_Mon (Arduino) vorgegeben, muss hier nur als default subscribe-Zeit angegeben werden!
     RefreshTask = None
     ser = serial.Serial('/dev/ttyUSB0', 9600, timeout=2)
-    time.sleep(7) # warten bis Arduino rebootet hat
+    time.sleep(7) # 7 Sek. warten bis Arduino rebootet hat
     ser.write(b'start')
     
     @classmethod
@@ -427,7 +379,8 @@ class Batt_Mon:
     def _AutoRefresh(cls):
         if not Batt_Mon.RefreshTask:
             Batt_Mon.RefreshTask = loop.run_in_executor(executor, Batt_Mon.ReadSerial)
-        
+
+
 class Batt_Mon_Voltage(Batt_Mon, Sensor):
     NAME = "Batt.-Voltage"
     UNIT = "V"
@@ -437,10 +390,14 @@ class Batt_Mon_Voltage(Batt_Mon, Sensor):
     def ReadSensorData(cls):
         Start = Batt_Mon.SensorData.find(b'V: ') + 3
         End = Batt_Mon.SensorData.find(b',', Start)
-        return Batt_Mon.SensorData[Start : End].decode()
+        return float(Batt_Mon.SensorData[Start : End].decode())
             
-    #@classmethod
-    #def CheckAlerts(cls):
+    @classmethod
+    def CheckAlerts(cls):
+        if cls.SensorData < 10:
+            return "Low Voltage"
+        else:
+            return False
     
 class Batt_Mon_Current(Batt_Mon, Sensor):
     NAME = "Batt.-Current"
@@ -451,10 +408,14 @@ class Batt_Mon_Current(Batt_Mon, Sensor):
     def ReadSensorData(cls):
         Start = Batt_Mon.SensorData.find(b'A: ') + 3
         End = Batt_Mon.SensorData.find(b',', Start)
-        return Batt_Mon.SensorData[Start : End].decode()
+        return float(Batt_Mon.SensorData[Start : End].decode())
             
-    #@classmethod
-    #def CheckAlerts(cls):
+    @classmethod
+    def CheckAlerts(cls):
+        if abs(cls.SensorData) > 2.5:
+            return "High Current"
+        else:
+            return False
     
 class Batt_Mon_Charge(Batt_Mon, Sensor):
     NAME = "Batt.-Charge"
@@ -465,10 +426,14 @@ class Batt_Mon_Charge(Batt_Mon, Sensor):
     def ReadSensorData(cls):
         Start = Batt_Mon.SensorData.find(b'C: ') + 3
         End = Batt_Mon.SensorData.find(b',', Start)
-        return Batt_Mon.SensorData[Start : End].decode()
+        return float(Batt_Mon.SensorData[Start : End].decode())
             
-    #@classmethod
-    #def CheckAlerts(cls):
+    @classmethod
+    def CheckAlerts(cls):
+        if cls.SensorData < 500:
+            return "Low Charge"
+        else:
+            return False
 
 class Batt_Mon_Temp(Batt_Mon, Sensor):
     NAME = "Batt.-Temp"
@@ -479,16 +444,14 @@ class Batt_Mon_Temp(Batt_Mon, Sensor):
     def ReadSensorData(cls):
         Start = Batt_Mon.SensorData.find(b'T: ') + 3
         End = Batt_Mon.SensorData.find(b'\r', Start)
-        return Batt_Mon.SensorData[Start : End].decode()
+        return float(Batt_Mon.SensorData[Start : End].decode())
             
     #@classmethod
     #def CheckAlerts(cls):
-    
-# Hier weitere konkrete Sensoren nach obigen Beispielen einfuegen...
 
-# ---------------------------
-## --- Initialisierungen ---
-# ---------------------------
+
+# ... Hier weitere konkrete Sensoren nach obigen Beispielen einfuegen ...
+
 
 
 
