@@ -237,8 +237,13 @@ def test():
         steer(pos)
         pos += 10
         time.sleep(1)
-        
+
+    steer(0)
+    time.sleep(1)
+    steer(100)
+    time.sleep(1)
     steer(50)
+    time.sleep(1)
 
     print("all tests complete")
     return "finished"

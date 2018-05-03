@@ -37,7 +37,7 @@
 import time
 import sys
 from concurrent.futures import ThreadPoolExecutor
-executor = ThreadPoolExecutor(max_workers=2) # max_workers erhoehen bei Problemen?
+executor = ThreadPoolExecutor(max_workers = 5) # max_workers erhoehen bei Problemen?
 import pigpio
 import subprocess
 import asyncio
@@ -49,7 +49,7 @@ import lcd
 
 DEBUG = True if "-d" in sys.argv else False
 
-DISP_BUTTON = 21
+DISP_BUTTON = 20
 pi = pigpio.pi()          # pigpiod muss im Hintergrund laufen!
 
 # ---------------------------
@@ -75,6 +75,8 @@ def init(_loop):
         # Display all Alerts at Display:
         Sensoren[Sen].SubscribeAlerts(DisplayAlert)
         
+    # kurz warten, bis die IP-Adresse ausgelesen ist:
+    time.sleep(1)
     # Display initialisieren:
     init_disp(loop)
     # Callback registrieren, um bei Knopfdruck den naechsten Sensor auf dem Display anzuzeigen:
@@ -238,7 +240,6 @@ class Sensor(metaclass=SensorMeta):
         if cls.REFRESH_TIME:
             # schedule next Refresh if REFRESH_TIME is not False:
             cls.NextRefresh = loop.call_later(cls.REFRESH_TIME, cls._AutoRefresh)
-            
 
     # ---------------------
     ## -- Objektmethoden --
@@ -341,7 +342,7 @@ class IP_Addr(Sensor):
 
 class Sonar_Sensor(Sensor):
     NAME = "Distance"
-    REFRESH_TIME = 0.1
+    REFRESH_TIME = False
     UNIT = "cm"
     
     SONAR_TRIGGER = 23
@@ -354,7 +355,7 @@ class Sonar_Sensor(Sensor):
             
     @classmethod
     def CheckAlerts(cls):
-        if cls.SensorData < 10 and cls.Sensor.Data > 0:
+        if cls.SensorData < 10 and cls.SensorData > 0:
             return "Obstacle detectetd"
         else:
             return False
@@ -363,22 +364,55 @@ class Sonar_Sensor(Sensor):
 class Batt_Mon:
     REFRESH_TIME = 1 # wird eigentlich durch Batt_Mon (Arduino) vorgegeben, muss hier nur als default subscribe-Zeit angegeben werden!
     RefreshTask = None
-    ser = serial.Serial('/dev/ttyUSB0', 9600, timeout=2)
-    time.sleep(7) # 7 Sek. warten bis Arduino rebootet hat
-    ser.write(b'start')
-    
+
+    @classmethod
+    def ConnectToBattMon(cls):
+        i = 0
+        while i <= 5:
+            try:
+                print("trying to connect to /dev/ttyUSB{}".format(i))
+                cls.ser = serial.Serial('/dev/ttyUSB{}'.format(i), 9600, timeout=2)
+                i = 10 # Damit die Schleife verlassen wird, falls keine Exception auftritt.
+            except serial.serialutil.SerialException:
+                i += 1
+
+        if i == 6:
+                print("ERROR: Could not connect to BattMon")
+                for subcls in cls.__subclasses__():
+                    subcls.NewAlertMsg = "Could not connect to BattMon"
+                    if subcls.AlertMsg != subcls.NewAlertMsg:
+                        subcls.AlertMsg = subcls.NewAlertMsg
+                        subcls.Alert()
+                # try again to connect to BattMon after 5 sec:
+                cls.NextTry = loop.call_later(5, cls.ConnectToBattMon)
+        elif i == 10:
+                Batt_Mon.RefreshTask = loop.run_in_executor(executor, Batt_Mon.ReadSerial)
+
+
     @classmethod
     def ReadSerial(cls):
+        time.sleep(5) # Wait until Arduino rebooted
+        cls.ser.write(b'start')
         while cls.ser.is_open:
-            cls.SensorData = cls.ser.readline() # blokiert solange bis eine neue Zeile empfangen wurde
-            cls.ser.reset_input_buffer()        # Sichergehen, dass nur neue Werte gelesen werden
-            for subcls in cls.__subclasses__():
-                subcls.Refresh()
-    
+            try:
+                cls.SensorData = cls.ser.readline() # blokiert solange bis eine neue Zeile empfangen wurde
+                cls.ser.reset_input_buffer()        # Sichergehen, dass nur neue Werte gelesen werden
+                for subcls in cls.__subclasses__():
+                    subcls.Refresh()
+            except serial.serialutil.SerialException:
+                break
+        for subcls in cls.__subclasses__():
+            subcls.NewAlertMsg = "Connection to BattMon lost"
+            if subcls.AlertMsg != subcls.NewAlertMsg:
+                subcls.AlertMsg = subcls.NewAlertMsg
+                subcls.Alert()
+            # try again to connect to BattMon after 5 sec:
+        Batt_Mon.ConnectToBattMon()
+
     @classmethod
     def _AutoRefresh(cls):
         if not Batt_Mon.RefreshTask:
-            Batt_Mon.RefreshTask = loop.run_in_executor(executor, Batt_Mon.ReadSerial)
+            Batt_Mon.ConnectToBattMon()
 
 
 class Batt_Mon_Voltage(Batt_Mon, Sensor):
@@ -409,7 +443,7 @@ class Batt_Mon_Current(Batt_Mon, Sensor):
         Start = Batt_Mon.SensorData.find(b'A: ') + 3
         End = Batt_Mon.SensorData.find(b',', Start)
         return float(Batt_Mon.SensorData[Start : End].decode())
-            
+
     @classmethod
     def CheckAlerts(cls):
         if abs(cls.SensorData) > 2.5:
@@ -427,7 +461,7 @@ class Batt_Mon_Charge(Batt_Mon, Sensor):
         Start = Batt_Mon.SensorData.find(b'C: ') + 3
         End = Batt_Mon.SensorData.find(b',', Start)
         return float(Batt_Mon.SensorData[Start : End].decode())
-            
+
     @classmethod
     def CheckAlerts(cls):
         if cls.SensorData < 500:
@@ -449,6 +483,29 @@ class Batt_Mon_Temp(Batt_Mon, Sensor):
     #@classmethod
     #def CheckAlerts(cls):
 
+
+class DS18B20_1(Sensor):
+    NAME = "Motor-Temp."
+    UNIT = "°C"
+    REFRESH_TIME = 3
+
+    SLAVE_NAME = "10-000802015d01"
+
+    @classmethod
+    def ReadSensorData(cls):
+        file = open('/sys/bus/w1/devices/' + cls.SLAVE_NAME + '/w1_slave')
+        filecontent = file.read()
+        file.close()
+        stringvalue = filecontent.split("\n")[1].split(" ")[9]
+        temperature = float("{0:0.1f}".format(float(stringvalue[2:]) / 1000))
+        return temperature
+
+    @classmethod
+    def CheckAlerts(cls):
+        if cls.SensorData > 60:
+            return "High Motor Temp."
+        else:
+            return False
 
 # ... Hier weitere konkrete Sensoren nach obigen Beispielen einfuegen ...
 

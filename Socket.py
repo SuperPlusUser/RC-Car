@@ -43,8 +43,8 @@ import asyncio
 import sys
 import xml.etree.ElementTree as ET
 
-import Sensorik_fake as Sensorik
-import Steuerung_fake as Steuerung
+import Sensorik #_fake as Sensorik
+import Steuerung #_fake as Steuerung
 
 IP = ""
 PORT = 8889
