@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
 
-## Version 0.4.3 (UNGETESTET!)
+## Version 0.5
 #
 ## Changelog:
+#
+# --- 0.5 ---
+# - Verbindung zum BattMon verbessert
+# --> Verbindung wird nach abbruch automatisch neu aufgebaut
+# --> weniger Wartezeit am Anfang
+# --> Verbindungsabbruch wird erkannt und eine Alert-Meldung wird generiert
+# - Sensoren "Motor-Speed" und "Lenk-Position" hinzugefuegt
+# - Sensor "Motor-Temp." hinzugefuegt.
+# - Beim Beenden des Skripts wird besser aufgeraeumt und es treten keine weiteren Exceptions mehr auf.
 #
 # --- 0.4.3 ---
 # - Kommentierung verbessert
@@ -46,18 +55,21 @@ import serial
 import sonar
 import lcd
 
+import Steuerung
 
 DEBUG = True if "-d" in sys.argv else False
 
 DISP_BUTTON = 20
 pi = pigpio.pi()          # pigpiod muss im Hintergrund laufen!
 
+
 # ---------------------------
 ## --- globale Funktionen ---
 # ---------------------------
 
 def init(_loop):
-    global loop, Sensoren, SensorenList, pi, cb1
+    global loop, Sensoren, SensorenList, pi, cb1, shutdown
+    shutdown = False
     loop = _loop
     # Ein Dictionary, das den Namen aller Subklassen von "Sensor" als Key enthaelt und die jeweilige Klasse als Wert:
     Sensoren = {}
@@ -95,12 +107,18 @@ def init_disp(loop):
     DispSen.subscribe(DisplaySensorData)
     
 def close():
+    global shutdown
+    shutdown = True
+    for Sen in Sensoren:
+        # Desubscribe Allerts to StdOut:
+        Sensoren[Sen].DesubscribeAlerts(PrintAlerts)
+        # Desubscribe Alerts at Display:
+        Sensoren[Sen].DesubscribeAlerts(DisplayAlert)
+    executor.shutdown(wait=True)
     cb1.cancel()
     loop.run_until_complete(lcd.init())
     loop.run_until_complete(lcd.clear())
     loop.run_until_complete(lcd.setBacklightOff())
-    loop.run_until_complete(loop.shutdown_asyncgens())
-    loop.close()
     Sonar_Sensor.son.cancel()
     pi.stop()
 
@@ -236,10 +254,11 @@ class Sensor(metaclass=SensorMeta):
 
     @classmethod
     def _AutoRefresh(cls):
-        cls.RefreshTask = loop.run_in_executor(executor, cls.Refresh)
-        if cls.REFRESH_TIME:
-            # schedule next Refresh if REFRESH_TIME is not False:
-            cls.NextRefresh = loop.call_later(cls.REFRESH_TIME, cls._AutoRefresh)
+        if not shutdown:
+            cls.RefreshTask = loop.run_in_executor(executor, cls.Refresh)
+            if cls.REFRESH_TIME:
+                # schedule next Refresh if REFRESH_TIME is not False:
+                cls.NextRefresh = loop.call_later(cls.REFRESH_TIME, cls._AutoRefresh)
 
     # ---------------------
     ## -- Objektmethoden --
@@ -377,23 +396,26 @@ class Batt_Mon:
                 i += 1
 
         if i == 6:
-                print("ERROR: Could not connect to BattMon")
-                for subcls in cls.__subclasses__():
-                    subcls.NewAlertMsg = "Could not connect to BattMon"
-                    if subcls.AlertMsg != subcls.NewAlertMsg:
-                        subcls.AlertMsg = subcls.NewAlertMsg
-                        subcls.Alert()
-                # try again to connect to BattMon after 5 sec:
-                cls.NextTry = loop.call_later(5, cls.ConnectToBattMon)
+            print("ERROR: Could not connect to BattMon")
+            for subcls in cls.__subclasses__():
+                subcls.NewAlertMsg = "Could not connect to BattMon"
+                if subcls.AlertMsg != subcls.NewAlertMsg:
+                    subcls.AlertMsg = subcls.NewAlertMsg
+                    subcls.Alert()
+                
+            # try again to connect to BattMon after 5 sec:
+            if not shutdown:
+                Batt_Mon.NextTry = loop.call_later(5, Batt_Mon.ConnectToBattMon)
         elif i == 10:
-                Batt_Mon.RefreshTask = loop.run_in_executor(executor, Batt_Mon.ReadSerial)
+            print("Successfully connected to BattMon")
+            Batt_Mon.RefreshTask = loop.run_in_executor(executor, Batt_Mon.ReadSerial)
 
 
     @classmethod
     def ReadSerial(cls):
         time.sleep(5) # Wait until Arduino rebooted
         cls.ser.write(b'start')
-        while cls.ser.is_open:
+        while cls.ser.is_open and not shutdown:
             try:
                 cls.SensorData = cls.ser.readline() # blokiert solange bis eine neue Zeile empfangen wurde
                 cls.ser.reset_input_buffer()        # Sichergehen, dass nur neue Werte gelesen werden
@@ -401,17 +423,20 @@ class Batt_Mon:
                     subcls.Refresh()
             except serial.serialutil.SerialException:
                 break
-        for subcls in cls.__subclasses__():
-            subcls.NewAlertMsg = "Connection to BattMon lost"
-            if subcls.AlertMsg != subcls.NewAlertMsg:
-                subcls.AlertMsg = subcls.NewAlertMsg
-                subcls.Alert()
-            # try again to connect to BattMon after 5 sec:
-        Batt_Mon.ConnectToBattMon()
+        cls.ser.close()
+        if not shutdown:
+            for subcls in cls.__subclasses__():
+                subcls.NewAlertMsg = "Connection to BattMon lost"
+                if subcls.AlertMsg != subcls.NewAlertMsg:
+                    subcls.AlertMsg = subcls.NewAlertMsg
+                    subcls.Alert()
+            # try again to connect to BattMon after:
+            Batt_Mon.ConnectToBattMon()
 
     @classmethod
     def _AutoRefresh(cls):
-        if not Batt_Mon.RefreshTask:
+        if not Batt_Mon.RefreshTask and not shutdown:
+            Batt_Mon.RefreshTask = True
             Batt_Mon.ConnectToBattMon()
 
 
@@ -497,15 +522,39 @@ class DS18B20_1(Sensor):
         filecontent = file.read()
         file.close()
         stringvalue = filecontent.split("\n")[1].split(" ")[9]
-        temperature = float("{0:0.1f}".format(float(stringvalue[2:]) / 1000))
-        return temperature
-
+        crcvalue = filecontent.split("\n")[0].split(" ")[11]
+        if crcvalue == "YES" and stringvalue != "t=85000": # 85°C wird oft bei Lesefehlern ausgegeben
+            temperature = float("{0:0.1f}".format(float(stringvalue[2:]) / 1000))
+            return temperature
+        else:
+            return cls.SensorData # alten Sensorwert zurueckgeben, falls ein Auslesefehler aufgetreten ist
+        
     @classmethod
     def CheckAlerts(cls):
         if cls.SensorData > 60:
             return "High Motor Temp."
         else:
             return False
+
+
+class MtrSpeed(Sensor):
+    NAME = "Motor-Speed"
+    UNIT = "%"
+    REFRESH_TIME = 1
+
+    @classmethod
+    def ReadSensorData(cls):
+        return Steuerung.get_speed()
+    
+class LnkPos(Sensor):
+    NAME = "Lenk-Position"
+    UNIT = ""
+    REFRESH_TIME = 1
+
+    @classmethod
+    def ReadSensorData(cls):
+        return Steuerung.get_pos()
+
 
 # ... Hier weitere konkrete Sensoren nach obigen Beispielen einfuegen ...
 
@@ -533,3 +582,5 @@ if __name__ == "__main__":
     finally:
         print("Cleaning up...")
         close()
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()

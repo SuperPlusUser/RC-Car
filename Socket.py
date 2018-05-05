@@ -32,7 +32,7 @@
 ## TODO:
 # - TESTEN!!!
 # - Error-Messages (NACK) spezifiezeieren uns festlegen, was bei einem NACK unternommen wird
-# - Standardmaessig alle Alerts subscriben?!
+# - Alert-Severity einbauen!
 # - Warum funktionieren manchmal keine KeyboardInterrupts?
 # - Kommentierung und Exception-Handling verbessern
 # - Uebersichtlichkeit verbessern
@@ -45,6 +45,7 @@ import xml.etree.ElementTree as ET
 
 import Sensorik #_fake as Sensorik
 import Steuerung #_fake as Steuerung
+
 
 IP = ""
 PORT = 8889
@@ -177,7 +178,7 @@ class SRCCP(asyncio.Protocol):
                             angle = root.find("angle").text
                             if DEBUG:
                                 print("Steering to ", angle)
-                            ack += Steuerung.steer(angle)
+                            ack += Steuerung.steer(int(angle))
                                 
                         elif command == "subscribe":
                             if root.find("type").text == "data":
@@ -443,11 +444,8 @@ finally:
     # Close the server:
     server.close()
     loop.run_until_complete(server.wait_closed())
-    print("canceling all asyncio tasks...")
-    for task in asyncio.Task.all_tasks():
-        print("cancelling task {}".format(task))
-        task.cancel()
     # Stop autorefreshing the sensors:
     Sensorik.close()
     Steuerung.close()
+    loop.run_until_complete(loop.shutdown_asyncgens())
     loop.close()
