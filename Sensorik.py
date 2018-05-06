@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 
-## Version 0.5
+## Version 0.5.1
 #
 ## Changelog:
+# --- 0.5.1 ---
+# - Bugfix bei den Alerts: gleiche Alerts des selben Sensors werden nun erneut ausgegeben, fals der Alert erneut auftritt.
+# - Sensoren DHT22 und BMP180 hinzugefuegt
+# - Sonar Sensor Front aktiviert
 #
 # --- 0.5 ---
 # - Verbindung zum BattMon verbessert
@@ -22,7 +26,7 @@
 # - Batt_Mon eingefuegt (alpha)
 # - Standardwerte fuer Sensordaten und Alerts in "None" statt "False" geaendert
 #
-# --- 0.41 ---
+# --- 0.4.1 ---
 # - Sensoren werden in eigenen Threads aktualisiert --> loop wird nicht blokiert
 # - Ultraschall-Sensor mit eingebaut
 #
@@ -51,9 +55,10 @@ import pigpio
 import subprocess
 import asyncio
 import serial
-
 import sonar
 import lcd
+import Adafruit_DHT
+import Adafruit_BMP.BMP085
 
 import Steuerung
 
@@ -229,10 +234,10 @@ class Sensor(metaclass=SensorMeta):
             cls.NewAlertMsg = "Error while reading Data from Sensor {}: {}!".format(cls.NAME, e)
         else:
             cls.NewAlertMsg = cls.CheckAlerts()
-        if cls.NewAlertMsg and cls.NewAlertMsg != cls.AlertMsg:
+        if cls.NewAlertMsg != cls.AlertMsg: # nur neue Alerts
             # Bei jedem Refresh werden, falls vorhanden, neue Alert-Nachrichten verschickt
             cls.AlertMsg = cls.NewAlertMsg
-            cls.Alert()
+            if cls.AlertMsg: cls.Alert()
 
     @classmethod
     def SubscribeAlerts(cls, AlertOutput):
@@ -343,42 +348,6 @@ class Sensor(metaclass=SensorMeta):
 ## --- konkrete Sensor-Klassen ---
 # --------------------------------
 
-class IP_Addr(Sensor):
-    """virtueller Sensor, der die IP-Adresse der WLAN-Schnittstelle zurueckgiebt."""
-    NAME = "IP-Address"
-    REFRESH_TIME = False
-    UNIT = ""
-
-    @classmethod
-    def ReadSensorData(cls):
-        cmdIP = "ip addr show wlan0 | grep inet | awk '{print $2}' | cut -d/ -f1"
-        com = subprocess.Popen(cmdIP, shell=True, stdout=subprocess.PIPE)
-        shellOutput = com.communicate()
-        strIP = shellOutput[0].decode()
-        IP = strIP.split('\n')[0]
-        return IP
-
-
-class Sonar_Sensor(Sensor):
-    NAME = "Distance"
-    REFRESH_TIME = False
-    UNIT = "cm"
-    
-    SONAR_TRIGGER = 23
-    SONAR_ECHO = 24
-    son = sonar.ranger(pi, SONAR_TRIGGER, SONAR_ECHO)
-    
-    @classmethod
-    def ReadSensorData(cls):
-        return float("{0:0.1f}".format(cls.son.read()))
-            
-    @classmethod
-    def CheckAlerts(cls):
-        if cls.SensorData < 10 and cls.SensorData > 0:
-            return "Obstacle detectetd"
-        else:
-            return False
-  
 # -- Battery Monitor --
 class Batt_Mon:
     REFRESH_TIME = 1 # wird eigentlich durch Batt_Mon (Arduino) vorgegeben, muss hier nur als default subscribe-Zeit angegeben werden!
@@ -508,6 +477,43 @@ class Batt_Mon_Temp(Batt_Mon, Sensor):
             
     #@classmethod
     #def CheckAlerts(cls):
+    
+    
+class IP_Addr(Sensor):
+    """virtueller Sensor, der die IP-Adresse der WLAN-Schnittstelle zurueckgiebt."""
+    NAME = "IP-Address"
+    REFRESH_TIME = False
+    UNIT = ""
+
+    @classmethod
+    def ReadSensorData(cls):
+        cmdIP = "ip addr show wlan0 | grep inet | awk '{print $2}' | cut -d/ -f1"
+        com = subprocess.Popen(cmdIP, shell=True, stdout=subprocess.PIPE)
+        shellOutput = com.communicate()
+        strIP = shellOutput[0].decode()
+        IP = strIP.split('\n')[0]
+        return IP
+
+
+class Sonar_Sensor_Front(Sensor):
+    NAME = "Distance Front"
+    REFRESH_TIME = 0.5
+    UNIT = "cm"
+    
+    SONAR_TRIGGER = 19
+    SONAR_ECHO = 13
+    son = sonar.ranger(pi, SONAR_TRIGGER, SONAR_ECHO)
+    
+    @classmethod
+    def ReadSensorData(cls):
+        return float("{0:0.1f}".format(cls.son.read()))
+            
+    @classmethod
+    def CheckAlerts(cls):
+        if cls.SensorData < 10 and cls.SensorData > 0:
+            return "Obstacle detectetd"
+        else:
+            return False
 
 
 class DS18B20_1(Sensor):
@@ -537,8 +543,56 @@ class DS18B20_1(Sensor):
         else:
             return False
 
+class DHT22_Temp(Sensor):
+    NAME = "Aussen-Temp"
+    UNIT = "°C"
+    REFRESH_TIME = 10
+    
+    sensor = Adafruit_DHT.DHT22
+    gpio = 6
+    
+    @classmethod
+    def ReadSensorData(cls):
+        humidity, temperature = Adafruit_DHT.read_retry(cls.sensor, cls.gpio)
+        # DHT22_Hum wird hier gleich mit aktualisiert
+        DHT22_Hum.SensorData = float("{0:0.1f}".format(humidity))
+        return float("{0:0.1f}".format(temperature))
+    
+class DHT22_Hum(Sensor):
+    NAME = "Luftfeuchtigkeit"
+    UNIT = "%"
+    REFRESH_TIME = 10 # Der Sensor wird eigentlich durch die Klasse DHT22_Temp mit aktualisiert,
+    # die Refresh-Time muss hier nur als Default-Subscribe-Zeit angegeben werden.
+    
+    @classmethod
+    def ReadSensorData(cls):
+        return cls.SensorData # wird durch DHT22_Temp festgelegt
 
-class MtrSpeed(Sensor):
+# --- BMP058 ---
+bmp = Adafruit_BMP.BMP085.BMP085()
+
+class BMP085_Pressure(Sensor):
+    NAME = "Luftdruck"
+    UNIT = "hPa"
+    REFRESH_TIME = 10
+    
+    @classmethod
+    def ReadSensorData(cls):
+        pressure = bmp.read_pressure()
+        return float("{0:0.1f}".format(pressure)) / 100
+        
+    
+class BMP_Altitude(Sensor):
+    NAME = "Hoehe"
+    UNIT = "m"
+    REFRESH_TIME = 10
+    
+    @classmethod
+    def ReadSensorData(cls):
+        altitude = bmp.read_altitude()
+        return float("{0:0.1f}".format(altitude))
+
+class Mtr_Speed(Sensor):
     NAME = "Motor-Speed"
     UNIT = "%"
     REFRESH_TIME = 1
@@ -547,7 +601,7 @@ class MtrSpeed(Sensor):
     def ReadSensorData(cls):
         return Steuerung.get_speed()
     
-class LnkPos(Sensor):
+class Lnk_Pos(Sensor):
     NAME = "Lenk-Position"
     UNIT = ""
     REFRESH_TIME = 1
