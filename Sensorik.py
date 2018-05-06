@@ -405,7 +405,7 @@ class Batt_Mon:
                 
             # try again to connect to BattMon after 5 sec:
             if not shutdown:
-                Batt_Mon.NextTry = loop.call_later(5, Batt_Mon.ConnectToBattMon)
+                Batt_Mon.ConnectTask = loop.call_later(5, Batt_Mon.ConnectToBattMon)
         elif i == 10:
             print("Successfully connected to BattMon")
             Batt_Mon.RefreshTask = loop.run_in_executor(executor, Batt_Mon.ReadSerial)
@@ -421,7 +421,8 @@ class Batt_Mon:
                 cls.ser.reset_input_buffer()        # Sichergehen, dass nur neue Werte gelesen werden
                 for subcls in cls.__subclasses__():
                     subcls.Refresh()
-            except serial.serialutil.SerialException:
+            except serial.serialutil.SerialException as e:
+                print(e)
                 break
         cls.ser.close()
         if not shutdown:
@@ -430,14 +431,14 @@ class Batt_Mon:
                 if subcls.AlertMsg != subcls.NewAlertMsg:
                     subcls.AlertMsg = subcls.NewAlertMsg
                     subcls.Alert()
-            # try again to connect to BattMon after:
-            Batt_Mon.ConnectToBattMon()
+            # try again to connect to BattMon after 5 sec:
+            Batt_Mon.ConnectTask = loop.call_later(5, Batt_Mon.ConnectToBattMon)
 
     @classmethod
     def _AutoRefresh(cls):
         if not Batt_Mon.RefreshTask and not shutdown:
             Batt_Mon.RefreshTask = True
-            Batt_Mon.ConnectToBattMon()
+            Batt_Mon.ConnectTask = loop.call_later(5, Batt_Mon.ConnectToBattMon)
 
 
 class Batt_Mon_Voltage(Batt_Mon, Sensor):

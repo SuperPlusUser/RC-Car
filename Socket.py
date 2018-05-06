@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 
-## Version 0.4.1 (XML alpha)
+## Version 0.5
 
 ## Changelog:
+#
+# --- 0.5 ---
+# - erste Tests durchgefuehrt
+# - Signal-Handler fuer SIGTERM eingebaut --> Programm kann mit "pkill -f Socket.py" sauber beendet werden
+# - Option "-a" fuer Autostart eingebaut, bei der 10 Sek. gewartet wird, bevor der Server gestartet wird
+
 # --- 0.4.1 ---
 # - Restliche Befehle implementiert
 # - weitere Kommentare eingefuegt
@@ -30,18 +36,15 @@
 # - Im Debugging-Modus starten bei Aufruf mit dem Parameter "-d"
 
 ## TODO:
-# - TESTEN!!!
 # - Error-Messages (NACK) spezifiezeieren uns festlegen, was bei einem NACK unternommen wird
 # - Alert-Severity einbauen!
-# - Warum funktionieren manchmal keine KeyboardInterrupts?
-# - Kommentierung und Exception-Handling verbessern
-# - Uebersichtlichkeit verbessern
 # - Ueberlegen, was passieren soll, falls ein Paket aufgeteilt wird?!
 
 
 import asyncio
 import sys
 import xml.etree.ElementTree as ET
+import signal
 
 import Sensorik #_fake as Sensorik
 import Steuerung #_fake as Steuerung
@@ -407,6 +410,17 @@ class SRCCP(asyncio.Protocol):
 
 
 loop = asyncio.get_event_loop()
+
+# Im Autostart mus etwas gewartet werden, bis das Netzwerk initialisiert ist und der Serielle Port verfuegbar ist:
+if "-a" in sys.argv:
+    import lcd
+    import time
+    loop.run_until_complete(lcd.init())
+    loop.run_until_complete(lcd.printString("Starting Socket-", lcd.line1))
+    loop.run_until_complete(lcd.printString("Server ...", lcd.line2))
+    time.sleep(10)
+
+
 # Each client connection will create a new protocol instance
 coro = loop.create_server(SRCCP, IP, PORT)
 server = loop.run_until_complete(coro)
@@ -434,6 +448,16 @@ if DEBUG:
 
 # Serve requests until Ctrl+C is pressed
 print('Serving on {}'.format(server.sockets[0].getsockname()))
+
+
+
+def sigterm_handler(_signo, _stack_frame):
+    print("Script terminated.")
+    sys.exit(0)
+
+#register sigterm_handler:
+signal.signal(signal.SIGTERM, sigterm_handler)
+
 
 try:
     loop.run_forever()
