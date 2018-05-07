@@ -92,27 +92,29 @@ async def printString(message, line):
     lock.release()
         
 async def printScrollingString(messageL1, messageL2, times = 1):    
+    global stop_scrolling
     l1 = len(messageL1)
     l2 = len(messageL2)
     await printString(messageL1, line1)
     await printString(messageL2, line2)
     if l1 > deviceWidth or l2 > deviceWidth:
-        lock.acquire()
+        await lock.acquire()
+        stop_scrolling = False
         for t in range(times):
             await asyncio.sleep(1)
             for i in range(max(l1,l2) - deviceWidth + 1):
                 if i < l1 - deviceWidth + 1:
-                    #await printString(messageL1[i : i+deviceWidth], line1)
                     await sendByte(line1, CMD)
                     for j in range(deviceWidth):
                         await sendByte(ord(messageL1[j + i]), CHR)
                 if i < l2 - deviceWidth + 1:
-                    #await printString(messageL2[i : i+deviceWidth], line2)
                     await sendByte(line2, CMD)
                     for j in range(deviceWidth):
                         await sendByte(ord(messageL2[j + i]), CHR)
-                await asyncio.sleep(0.2)
-            
+                if stop_scrolling:
+                    lock.release()
+                    return
+                await asyncio.sleep(0.2)            
         lock.release()
             
 if __name__ == "__main__":       

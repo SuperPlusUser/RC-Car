@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 
-## Version 0.5.1
+## Version 0.5.2
 #
 ## Changelog:
+# --- 0.5.2 ---
+# - Bug behoben, der dafuer sorgt, dass beim wegklicken eines Alerts, sinnlose Zeichen im Display erscheinen.
+# - Beim Wegklicken eines Alerts wird danach der zuvor ausgewaehlte Sensor weiter angezeigt.
+#
 # --- 0.5.1 ---
 # - Bugfix bei den Alerts: gleiche Alerts des selben Sensors werden nun erneut ausgegeben, fals der Alert erneut auftritt.
 # - Sensoren DHT22 und BMP180 hinzugefuegt
@@ -124,7 +128,8 @@ def close():
     loop.run_until_complete(lcd.init())
     loop.run_until_complete(lcd.clear())
     loop.run_until_complete(lcd.setBacklightOff())
-    Sonar_Sensor.son.cancel()
+    Sonar_Sensor_Front.son.cancel()
+    ##Sonar_Sensor_Rear.son.cancel()
     pi.stop()
 
 def PrintSensorData(Sensor, Data, Unit):
@@ -150,12 +155,15 @@ def DisplayNextSensorData(gpio, level, tick):
     # entprellen:
     if DEBUG: print(pigpio.tickDiff(lastTick, tick))
     if (pigpio.tickDiff(lastTick, tick) > 500000):
-        DispAlert = False # Bei Tastendruck verschwinden Alerts solange, bis ein neuer Alert angezeigt wird
-        asyncio.run_coroutine_threadsafe(lcd.init(), loop) # Display neu initialisieren --> Anzeigefehler beheben
-        DispSen.desubscribe()
-        DispSenNr = (DispSenNr + 1) % len(SensorenList)
-        DispSen = SensorenList[DispSenNr]()
-        DispSen.subscribe(DisplaySensorData, True, 0.5)
+        lcd.stop_scrolling = True # Falls im Display gerade ein langer Text durchscrollt, dies unterbrechen.
+        if DispAlert:
+            DispAlert = False # Bei Tastendruck verschwinden Alerts solange, bis ein neuer Alert angezeigt wird
+            DisplaySensorData(DispSen.NAME, DispSen.SensorData, DispSen.UNIT)
+        else:
+            DispSen.desubscribe()
+            DispSenNr = (DispSenNr + 1) % len(SensorenList)
+            DispSen = SensorenList[DispSenNr]()
+            DispSen.subscribe(DisplaySensorData, True, 0.5)
         lastTick = tick
 
 # --------------------------
@@ -515,6 +523,25 @@ class Sonar_Sensor_Front(Sensor):
         else:
             return False
 
+##class Sonar_Sensor_Rear(Sensor):
+##    NAME = "Distance Rear"
+##    REFRESH_TIME = 0.5
+##    UNIT = "cm"
+##    
+##    SONAR_TRIGGER = 
+##    SONAR_ECHO = 
+##    son = sonar.ranger(pi, SONAR_TRIGGER, SONAR_ECHO)
+##    
+##    @classmethod
+##    def ReadSensorData(cls):
+##        return float("{0:0.1f}".format(cls.son.read()))
+##            
+##    @classmethod
+##    def CheckAlerts(cls):
+##        if cls.SensorData < 10 and cls.SensorData > 0:
+##            return "Obstacle detectetd"
+##        else:
+##            return False
 
 class DS18B20_1(Sensor):
     NAME = "Motor-Temp."
