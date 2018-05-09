@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 
-## Version 0.5.2
+## Version 0.5.3
 #
 ## Changelog:
+#
+# --- 0.5.3 ---
+# - Ein paar Dinge vereinfacht.
+# - Beim Subscriben werden nun alle Sensorwerte als String an die Output-Funktion weitergegeben.
+#
 # --- 0.5.2 ---
 # - Bug behoben, der dafuer sorgt, dass beim wegklicken eines Alerts, sinnlose Zeichen im Display erscheinen.
 # - Beim Wegklicken eines Alerts wird danach der zuvor ausgewaehlte Sensor weiter angezeigt.
@@ -91,7 +96,7 @@ def init(_loop):
     for Sen in Sensoren:
         # Start Refresh-Tasks:
         Sensoren[Sen]._AutoRefresh()
-        # Print all Allerts to StdOut:
+        # Print all Alerts to StdOut:
         Sensoren[Sen].SubscribeAlerts(PrintAlerts)
         # Display all Alerts at Display:
         Sensoren[Sen].SubscribeAlerts(DisplayAlert)
@@ -119,7 +124,7 @@ def close():
     global shutdown
     shutdown = True
     for Sen in Sensoren:
-        # Desubscribe Allerts to StdOut:
+        # Desubscribe Alerts to StdOut:
         Sensoren[Sen].DesubscribeAlerts(PrintAlerts)
         # Desubscribe Alerts at Display:
         Sensoren[Sen].DesubscribeAlerts(DisplayAlert)
@@ -180,7 +185,7 @@ class SensorMeta(type):
         # Initialisierungen (sollten nicht ueberschrieben werden):
         # In dieser Static Variable werden die zuletzt ausgelesenen Sensor-Daten gespeichert. Solange keine ausgelesen wurden: None
         new_class.SensorData = None
-        # In dieser Static Variable werden Alert-Nachrichten als String gespeichert. Solange kein Alert vorliegt: FNone
+        # In dieser Static Variable werden Alert-Nachrichten als String gespeichert. Solange kein Alert vorliegt: None
         new_class.AlertMsg = None
         # In dieser Liste werden die Funktionen hinterlegt. die bei einem Alert aufgerufen werden.
         new_class.AlertSubscriber = []
@@ -278,12 +283,8 @@ class Sensor(metaclass=SensorMeta):
     # ---------------------
 
     def __init__(self):
-        self.sub = False
+        self._sub = False
         self.lastPubValue = None
-
-    def __del__(self):
-        if self.sub:
-            self.sub.cancel()
 
     def subscribe(self, Output, OnlyNew = True, time = False):
         """
@@ -306,16 +307,11 @@ class Sensor(metaclass=SensorMeta):
         if t < type(self).REFRESH_TIME:
             if DEBUG: print("Time lower than refresh rate! Taking refresh rate instead.")
             t = type(self).REFRESH_TIME
-        if self.sub == False:
-            self.sub = asyncio.run_coroutine_threadsafe(self._SendSensorData(Output, OnlyNew, t), loop)
-        else:
-            raise ValueError("ERROR: Sensor already subscribed. One object of a sensor cannot be subscribed twice. Call 'desubscribe' first!")
+        self._sub = True
+        self._SendSensorData(Output, OnlyNew, t)
 
     def desubscribe(self):
-        if self.sub:
-            self.sub.cancel()
-            if DEBUG: print("Subscription cancelled")
-        self.sub = False
+        self._sub = False
 
     def getSensorData(self, OnlyNew = False, Refresh = False):
         """
@@ -327,7 +323,7 @@ class Sensor(metaclass=SensorMeta):
                     |                    "Refresh()" zwischengespeicherten Sensordaten werden ausgegeben
                     |
                     -> Wenn True: Es wird nur ein Rueckgabewert gegeben, falls die Sensordaten sich seit dem letzten Aufruf
-                       der Methode verändert haben, andernfalls: False.
+                       der Methode verändert haben, andernfalls: None.
         """
         if Refresh: type(self).Refresh()    # Falls Refresh == True: Sensordaten vor der Rueckgabe aktualisieren
         Value = type(self).SensorData        # Das Klassen-Attribut "SensorData" in die lokale Variable "value" zwischenspeichern
@@ -337,19 +333,19 @@ class Sensor(metaclass=SensorMeta):
             self.lastPubValue = Value
             return Value
 
-    async def _SendSensorData(self, Output, OnlyNew, t):
+    def _SendSensorData(self, Output, OnlyNew, t):
         """
         Veroeffentlicht die Sensordaten wiederholt an die uebergebene 'Output(Name, SensorDaten, Einheit)'- Fkt
         time gibt die Zeit in Sekunden zwischend den Veroeffentlichungen an
         BEACHTEN: Es macht keinen Sinn, das Intervall der Veroeffentlichungen kleiner zu waehlen
                   als das Intervall, in dem die jeweiligen Sensordaten aktualisiert werden (REFRESH_TIME)!
         """
-        while True:
-            Data = self.getSensorData(OnlyNew)
-            if Data is not None:
-                if DEBUG: print("Sending Sensor Data: {}".format(Data))
-                Output(str(type(self).NAME),Data, str(type(self).UNIT))
-            await asyncio.sleep(t)
+        Data = self.getSensorData(OnlyNew)
+        if Data:
+            if DEBUG: print("Sending Sensor Data: {}".format(Data))
+            Output(str(type(self).NAME), str(Data), str(type(self).UNIT))
+        if self._sub and not shutdown:
+            self.NextSendTask = loop.call_later(t, self._SendSensorData, Output, OnlyNew, t)
 
 
 # --------------------------------

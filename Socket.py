@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 
-## Version 0.5
+## Version 0.5.1
 
 ## Changelog:
+#
+# --- 0.5.1 ---
+# - unnoetige Programmteile entfernt
+# - Problem im Sensorik-Modul behoben, das teilweise dazu fuehrte, dass keine Sensorwerte verschickt wurden.
 #
 # --- 0.5 ---
 # - erste Tests durchgefuehrt
@@ -46,8 +50,8 @@ import sys
 import xml.etree.ElementTree as ET
 import signal
 
-import Steuerung #_fake as Steuerung
-import Sensorik #_fake as Sensorik
+import Steuerung_fake as Steuerung
+import Sensorik_fake as Sensorik
 
 IP = ""
 PORT = 8889
@@ -110,6 +114,9 @@ class SRCCP(asyncio.Protocol):
         print("desubscribing Alerts from all Sensors...")
         for Sen in Sensorik.Sensoren:
             Sensorik.Sensoren[Sen].DesubscribeAlerts(self.SendAlert)
+        print("Stopping Vehicle...")
+        Steuerung.brake()
+        Steuerung.disable_steering()
 
     def data_received(self, receivedData):
         """
@@ -117,7 +124,7 @@ class SRCCP(asyncio.Protocol):
         Die empfangenen Daten werden dann ausgewährtet und auf bekannte Muster geprueft.
         Bei korrekt empfangenen und bekannten Nachrichten wird die gewuenschte Aktion ausgeloest.
         """
-        print("Data received from Host {}: {!r}\nTrying to decode and parse...".format(self.peername, receivedData))
+        print("Data received from Host {}: {!r}".format(self.peername, receivedData))
 
         readPos = 0
         while readPos < len(receivedData):
@@ -130,7 +137,6 @@ class SRCCP(asyncio.Protocol):
         
                     frame = receivedData[readPos+2 : readPos+length+2]
                     
-                    print("----------------------")
                     if DEBUG: 
                         print("Received SRCCP-Packet:")
                         print("parsed length: ", length)   
@@ -138,7 +144,6 @@ class SRCCP(asyncio.Protocol):
                     
                     if not frame.endswith(b'#/'):
                         print("ERROR: Wrong length or incomplete data received!")
-                        print("----------------------")
                         self.SendNACK("TransmissionError", "Incomplete or malformed packet received")
                         # suche weiter nach einem Paket...
                         readPos += 1
@@ -214,8 +219,7 @@ class SRCCP(asyncio.Protocol):
                             
                     else:
                         raise ValueError("unknown message")
-                            
-                    print("----------------------")
+                
                         
                 except ValueError as e:
                     print("ValueError:" + e.args[0])
@@ -241,7 +245,6 @@ class SRCCP(asyncio.Protocol):
         """
         
         if DEBUG: print( "Sending Message of Sensor '{}' to Host '{}': '{}'".format(Sensor, self.peername, Message))
-        #self.transport.write((str(Type) + "(" + str(Message) + " " + str(Unit) +")\n").encode())
         root = ET.Element('msg')
         name = ET.SubElement(root, 'name')
         name.text = "sensordata"
@@ -407,7 +410,6 @@ class SRCCP(asyncio.Protocol):
             return 0
 
 
-
 loop = asyncio.get_event_loop()
 
 # Im Autostart mus etwas gewartet werden, bis das Netzwerk initialisiert ist und der Serielle Port verfuegbar ist:
@@ -425,21 +427,8 @@ coro = loop.create_server(SRCCP, IP, PORT)
 server = loop.run_until_complete(coro)
 
 Sensorik.init(loop)
-
-# DEBUGGING:
-async def printCurrentTasks(repeat = False):
-    Tasks = asyncio.Task.all_tasks()
-    print(Tasks)
-    while repeat:
-        newTasks = asyncio.Task.all_tasks()
-        if Tasks != newTasks:
-            Tasks = newTasks
-            print(Tasks)
-        await asyncio.sleep(repeat)
-    return asyncio.Task.all_tasks()
-
+              
 if DEBUG:
-    loop.create_task(printCurrentTasks(10))
     # Enable Debugging mode of asyncio:
     loop.set_debug(True)
     import logging
@@ -448,15 +437,12 @@ if DEBUG:
 # Serve requests until Ctrl+C is pressed
 print('Serving on {}'.format(server.sockets[0].getsockname()))
 
-
-
 def sigterm_handler(_signo, _stack_frame):
     print("Script terminated.")
     sys.exit(0)
 
 #register sigterm_handler:
 signal.signal(signal.SIGTERM, sigterm_handler)
-
 
 try:
     loop.run_forever()
