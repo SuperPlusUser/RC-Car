@@ -50,8 +50,8 @@ import sys
 import xml.etree.ElementTree as ET
 import signal
 
-import Steuerung_fake as Steuerung
-import Sensorik_fake as Sensorik
+import Steuerung #_fake as Steuerung
+import Sensorik  #_fake as Sensorik
 
 IP = ""
 PORT = 8889
