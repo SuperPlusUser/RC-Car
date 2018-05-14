@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 
-## Version 0.2
+## Version 0.3
     
 ## Changelog:
+#
+# --- Version 0.3 ---
+# - Moeglichkeit eingebaut IR-Beleuchtung der Kamera an und aus zu schalten.
 #
 # --- Version 0.2 ---
 # - Tests durchgefuehrt
@@ -48,6 +51,8 @@ EN = 17                 # Hauptmotor
 IN1 = 27                # Motor Forwaerts: 0
 IN2 = 22                # Motor Forwaerts: 1
 
+# --- Beleuchtung ---
+IR = 21
 
 
 # ----------------
@@ -193,6 +198,16 @@ def deblock_mtr():
 
     
 # --------------
+# --- IR-LED ---
+# --------------
+
+def enable_ir():
+    return v.write(IR, 1)
+
+def disable_ir():
+    return v.write(IR, 0)
+
+# --------------
 ## --- close ---
 # --------------
 
@@ -201,6 +216,7 @@ def close():
     Gibt verwendete Ressourcen frei. Beim Beenden des Skripts ausfuehren!
     """
     roll()
+    disable_ir()
     v.stop()
     disable_steering()
     l.stop()
@@ -302,6 +318,9 @@ v.set_PWM_range(EN, PWM_RANGE)
 deblock_mtr()
 set_speed_limit(100)
 
+# --- Initialisiere IR-LED ---
+v.set_mode(IR, pigpio.OUTPUT)
+v.write(IR, 1) # IR-LED standardmaessig an
 
 # -------------
 ## --- Main ---

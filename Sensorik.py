@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 
-## Version 0.5.3
+## Version 0.6
 #
 ## Changelog:
+#
+# --- 0.6 ---
+# - zweiten Entfernungs-Sensor eingebaut
+# - Buzzer eingebaut
+# - weitere kleiene Optimierungen und Fehlerkorrekturen
 #
 # --- 0.5.3 ---
 # - Ein paar Dinge vereinfacht.
@@ -74,6 +79,8 @@ import Steuerung
 DEBUG = True if "-d" in sys.argv else False
 
 DISP_BUTTON = 20
+BUZZER_PIN = 25
+BUZZER_FREQ = 800
 pi = pigpio.pi()          # pigpiod muss im Hintergrund laufen!
 
 
@@ -82,9 +89,11 @@ pi = pigpio.pi()          # pigpiod muss im Hintergrund laufen!
 # ---------------------------
 
 def init(_loop):
-    global loop, Sensoren, SensorenList, pi, cb1, shutdown
+    global loop, Sensoren, SensorenList, pi, cb1, shutdown, DispAlert
     shutdown = False
     loop = _loop
+    # Solange das Display nicht initialisiert ist, keine Alerts darstellen:
+    DispAlert = True
     # Ein Dictionary, das den Namen aller Subklassen von "Sensor" als Key enthaelt und die jeweilige Klasse als Wert:
     Sensoren = {}
     # Alle Subklassen und das jeweils zugehoerige Klassenatrribut "NAME" werden automatisch in das obige Dictionary eingetragen:
@@ -109,6 +118,11 @@ def init(_loop):
     pi.set_mode(DISP_BUTTON, pigpio.INPUT)
     pi.set_pull_up_down(DISP_BUTTON, pigpio.PUD_UP)
     cb1 = pi.callback(DISP_BUTTON, pigpio.FALLING_EDGE, DisplayNextSensorData)
+    # GPIO des Buzzers konfigurieren:
+    pi.set_mode(BUZZER_PIN, pigpio.OUTPUT)
+    pi.set_PWM_frequency(BUZZER_PIN, BUZZER_FREQ)
+    pi.set_PWM_range(BUZZER_PIN, 100)
+    pi.set_PWM_dutycycle(BUZZER_PIN, 0)
 
 def init_disp(loop):
     global DispSenNr, DispSen, lastTick, DispAlert
@@ -134,7 +148,8 @@ def close():
     loop.run_until_complete(lcd.clear())
     loop.run_until_complete(lcd.setBacklightOff())
     Sonar_Sensor_Front.son.cancel()
-    ##Sonar_Sensor_Rear.son.cancel()
+    Sonar_Sensor_Rear.son.cancel()
+    pi.set_PWM_dutycycle(BUZZER_PIN, 0)
     pi.stop()
 
 def PrintSensorData(Sensor, Data, Unit):
@@ -341,10 +356,10 @@ class Sensor(metaclass=SensorMeta):
                   als das Intervall, in dem die jeweiligen Sensordaten aktualisiert werden (REFRESH_TIME)!
         """
         Data = self.getSensorData(OnlyNew)
-        if Data:
-            if DEBUG: print("Sending Sensor Data: {}".format(Data))
-            Output(str(type(self).NAME), str(Data), str(type(self).UNIT))
         if self._sub and not shutdown:
+            if Data:
+                if DEBUG: print("Sending Sensor Data: {}".format(Data))
+                Output(str(type(self).NAME), str(Data), str(type(self).UNIT))
             self.NextSendTask = loop.call_later(t, self._SendSensorData, Output, OnlyNew, t)
 
 
@@ -501,43 +516,97 @@ class IP_Addr(Sensor):
 
 class Sonar_Sensor_Front(Sensor):
     NAME = "Distance Front"
-    REFRESH_TIME = 0.5
+    REFRESH_TIME = 0.4
     UNIT = "cm"
-    
+
     SONAR_TRIGGER = 19
     SONAR_ECHO = 13
     son = sonar.ranger(pi, SONAR_TRIGGER, SONAR_ECHO)
-    
+    i = 0
+    EN_BUZZER = True
+
+    beep = False
+
     @classmethod
     def ReadSensorData(cls):
-        return float("{0:0.1f}".format(cls.son.read()))
-            
+        data = float("{0:0.1f}".format(cls.son.read()))
+        if data > 0: return data
+        else: return cls.SensorData
+
     @classmethod
     def CheckAlerts(cls):
-        if cls.SensorData < 10 and cls.SensorData > 0:
-            return "Obstacle detectetd"
+        global RearBeep
+        if cls.SensorData < 10:
+            msg = "Crash!"
+            if cls.EN_BUZZER: cls.i = 3
+        elif cls.SensorData < 25:
+            msg = "close Obstacle!"
+            if cls.EN_BUZZER: cls.i += 2
+        elif cls.SensorData < 50:
+            msg = "distant Obstacle"
+            if cls.EN_BUZZER: cls.i += 1
         else:
-            return False
+            msg = False
+            if cls.EN_BUZZER: cls.i = 0
 
-##class Sonar_Sensor_Rear(Sensor):
-##    NAME = "Distance Rear"
-##    REFRESH_TIME = 0.5
-##    UNIT = "cm"
-##    
-##    SONAR_TRIGGER = 
-##    SONAR_ECHO = 
-##    son = sonar.ranger(pi, SONAR_TRIGGER, SONAR_ECHO)
-##    
-##    @classmethod
-##    def ReadSensorData(cls):
-##        return float("{0:0.1f}".format(cls.son.read()))
-##            
-##    @classmethod
-##    def CheckAlerts(cls):
-##        if cls.SensorData < 10 and cls.SensorData > 0:
-##            return "Obstacle detectetd"
-##        else:
-##            return False
+        if cls.EN_BUZZER:
+            if cls.i >= 3:
+                pi.set_PWM_dutycycle(BUZZER_PIN, 50) #Beep
+                cls.i = 0
+                cls.beep = True
+            elif cls.beep:
+                pi.set_PWM_dutycycle(BUZZER_PIN, 0) #Buzzer aus
+                cls.beep = False
+
+        return msg
+
+
+class Sonar_Sensor_Rear(Sensor):
+    NAME = "Distance Rear"
+    REFRESH_TIME = 0.4
+    UNIT = "cm"
+
+    SONAR_TRIGGER = 23
+    SONAR_ECHO = 24
+    son = sonar.ranger(pi, SONAR_TRIGGER, SONAR_ECHO)
+    i = 0
+    EN_BUZZER = True
+
+    beep = False
+
+    @classmethod
+    def ReadSensorData(cls):
+        data = float("{0:0.1f}".format(cls.son.read()))
+        if data > 0: return data
+        else: return cls.SensorData
+
+    @classmethod
+    def CheckAlerts(cls):
+        global RearBeep
+        if cls.SensorData < 10:
+            msg = "Crash!"
+            if cls.EN_BUZZER: cls.i = 3
+        elif cls.SensorData < 25:
+            msg = "close Obstacle!"
+            if cls.EN_BUZZER: cls.i += 2
+        elif cls.SensorData < 50:
+            msg = "distant Obstacle"
+            if cls.EN_BUZZER: cls.i += 1
+        else:
+            msg = False
+            if cls.EN_BUZZER: cls.i = 0
+
+        if cls.EN_BUZZER:
+            if cls.i >= 3:
+                pi.set_PWM_dutycycle(BUZZER_PIN, 50) #Beep
+                cls.i = 0
+                cls.beep = True
+            elif cls.beep:
+                pi.set_PWM_dutycycle(BUZZER_PIN, 0) #Buzzer aus
+                cls.beep = False
+
+        return msg
+
 
 class DS18B20_1(Sensor):
     NAME = "Motor-Temp."
