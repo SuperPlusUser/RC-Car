@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 
-## Version 0.5.1
+## Version 0.5.2
 
 ## Changelog:
+#
+# --- 0.5.2 ---
+# - Befehle "shutdown", "reboot" und "irled" eingebaut
 #
 # --- 0.5.1 ---
 # - unnoetige Programmteile entfernt
@@ -42,13 +45,14 @@
 ## TODO:
 # - Error-Messages (NACK) spezifiezeieren uns festlegen, was bei einem NACK unternommen wird
 # - Alert-Severity einbauen!
-# - Ueberlegen, was passieren soll, falls ein Paket aufgeteilt wird?!
+# - Ueberlegen, was passieren soll, falls ein Paket aufgeteilt wird!
 
 
 import asyncio
 import sys
 import xml.etree.ElementTree as ET
 import signal
+import subprocess
 
 import Steuerung #_fake as Steuerung
 import Sensorik  #_fake as Sensorik
@@ -99,7 +103,6 @@ class SRCCP(asyncio.Protocol):
         print("Connection from {}".format(self.peername))
         self.transport = transport
         self.SendMsg("system", WELCOME_MSG)
-        #TODO: Standardmaessig alle Alerts subscriben?!
         # Subscribe Alerts from all Sensors:
         for Sen in Sensorik.Sensoren:
             Sensorik.Sensoren[Sen].SubscribeAlerts(self.SendAlert)
@@ -204,10 +207,24 @@ class SRCCP(asyncio.Protocol):
                             elif root.find("type").text == "alert":
                                 for sensor in root.findall("sensor"):
                                     ack += self.desubscribeAlerts(sensor)
-                        
+
+                        elif command == "irled":
+                            if root.find("value").text == "0":
+                                Steuerung.disable_ir()
+                            elif root.find("value").text == "1":
+                                Steuerung.enable_ir()
+
                         elif command == "close":
                             print("Client '{}' closed the connection".format(self.peername))
                             self.transport.close()
+
+                        elif command == "shutdown":
+                            print("calling shutdown.sh and shutting down pi...")
+                            subprocess.call("~/RC-Car/shutdown.sh", shell = True)
+
+                        elif command == "reboot":
+                            print("calling reboot.sh and rebooting pi...")
+                            subprocess.call("~/RC-Car/reboot.sh", shell = True)
 
                                 
                     elif root.tag == "msg":
@@ -215,7 +232,7 @@ class SRCCP(asyncio.Protocol):
                             
                     elif root.tag == "ctlmsg":
                         print("controlmessage received. ERROR: Not implemented yet!")
-                        # TODO: z.B. bei NACK Fehlermeldung auswerten und Nachricht evtl wiederholen?!
+                        # TODO: z.B. bei NACK Fehlermeldung auswerten und Nachricht evtl wiederholen!
                             
                     else:
                         raise ValueError("unknown message")
@@ -223,11 +240,9 @@ class SRCCP(asyncio.Protocol):
                         
                 except ValueError as e:
                     print("ValueError:" + e.args[0])
-                    #self.transport.write("err({})\n".format(e.args[0]).encode())
                     self.SendNACK(command, e.args[0])
                 except KeyError as e:
                     print("KeyError:" + e.args[0])
-                    #self.transport.write("err({})\n".format(e.args[0]).encode())
                     self.SendNACK(command, e.args[0])
                 else:
                     if ack == 0:
@@ -412,7 +427,7 @@ class SRCCP(asyncio.Protocol):
 
 loop = asyncio.get_event_loop()
 
-# Im Autostart mus etwas gewartet werden, bis das Netzwerk initialisiert ist und der Serielle Port verfuegbar ist:
+# Im Autostart muss etwas gewartet werden, bis das Netzwerk initialisiert ist und der Serielle Port verfuegbar ist:
 if "-a" in sys.argv:
     import lcd
     import time
