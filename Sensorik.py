@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 
-## Version 0.6
+## Version 0.6.1
 #
 ## Changelog:
+#
+# --- 0.6.1 ---
+# - Bug behoben, der dafuer sorgte, dass 0 (=False) nicht als Sensor-Messwert ausgegeben wurde.
 #
 # --- 0.6 ---
 # - zweiten Entfernungs-Sensor eingebaut
@@ -239,7 +242,7 @@ class Sensor(metaclass=SensorMeta):
         muss in den erbenden Sensor-Klassen implementiert werden.
         Die Funktion muss die Sensordaten vom Sensor einlesen und als Reuckgabewert liefern
         """
-        return False
+        return None
 
     @classmethod
     def CheckAlerts(cls):
@@ -357,7 +360,7 @@ class Sensor(metaclass=SensorMeta):
         """
         Data = self.getSensorData(OnlyNew)
         if self._sub and not shutdown:
-            if Data:
+            if not Data == None:
                 if DEBUG: print("Sending Sensor Data: {}".format(Data))
                 Output(str(type(self).NAME), str(Data), str(type(self).UNIT))
             self.NextSendTask = loop.call_later(t, self._SendSensorData, Output, OnlyNew, t)
@@ -442,7 +445,7 @@ class Batt_Mon_Voltage(Batt_Mon, Sensor):
             
     @classmethod
     def CheckAlerts(cls):
-        if cls.SensorData < 10:
+        if cls.SensorData < 9.5:
             return "Low Voltage"
         else:
             return False
@@ -460,7 +463,7 @@ class Batt_Mon_Current(Batt_Mon, Sensor):
 
     @classmethod
     def CheckAlerts(cls):
-        if abs(cls.SensorData) > 2.5:
+        if abs(cls.SensorData) > 5:
             return "High Current"
         else:
             return False
