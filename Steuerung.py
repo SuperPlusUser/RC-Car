@@ -199,11 +199,8 @@ def set_speed_limit(l, dir = "all"):
         _Limit_F = l/100
     elif dir = "backward":
         _Limit_B = l/100
-    if DEBUG: print("Speedlimit set to {} Percent for direktion {}".format(l, dir))
+    if DEBUG: print("Speedlimit set to {} Percent for direction {}".format(l, dir))
     
-def get_speed_limit():
-    global limit
-    return limit
 
 def block_mtr():
     """

@@ -543,7 +543,7 @@ class Sonar_Sensor_Front(Sensor):
             if cls.EN_BUZZER: cls.i = 3
             if EN_BRAKE_ASSIST:
                 # weiteres Vorwaertsfahren unterbinden
-                Steuerung.set_speed_limit(0, dir = "forward")
+                Steuerung.set_speed_limit(0, "forward")
                 if not cls.brake:
                     # nur einmal bremsen, ansonsten kommt man nicht mehr vom Fleck
                     Steuerung.brake()
@@ -555,7 +555,7 @@ class Sonar_Sensor_Front(Sensor):
             if cls.EN_BUZZER: cls.i += 2
             if EN_BRAKE_ASSIST:
                 # Geschwindigkeit auf 20% limitieren
-                Steuerung.set_speed_limit(20, dir = "forward")
+                Steuerung.set_speed_limit(20, "forward")
                 if not cls.brake:
                     # nur einmal bremsen, ansonsten kommt man nicht mehr vom Fleck
                     Steuerung.brake()
@@ -566,7 +566,7 @@ class Sonar_Sensor_Front(Sensor):
             if cls.EN_BUZZER: cls.i += 1
             if EN_BRAKE_ASSIST:
                 # Geschwindigkeit auf 50% limitieren
-                Steuerung.set_speed_limit(50, dir = "forward")
+                Steuerung.set_speed_limit(50, "forward")
                 if not cls.brake:
                     # nur einmal bremsen, ansonsten kommt man nicht mehr vom Fleck
                     Steuerung.brake()
@@ -578,7 +578,7 @@ class Sonar_Sensor_Front(Sensor):
             if EN_BRAKE_ASSIST:
                 # Bremsen wieder erlauben und Speedlimt zuruecksetzen
                 cls.brake = False
-                Steuerung.set_speed_limit(100, dir = "forward")
+                Steuerung.set_speed_limit(100, "forward")
 
         if cls.EN_BUZZER:
             if cls.i >= 3:
