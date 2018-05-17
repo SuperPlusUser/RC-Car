@@ -6,6 +6,9 @@
 #
 # --- Version 0.3 ---
 # - Moeglichkeit eingebaut IR-Beleuchtung der Kamera an und aus zu schalten.
+# - Kommentierung erweitert.
+# - Moeglichkeit eingebaut speedlimits nur fuer eine Richtung zu setzen
+#   (Benoetigt fuer Bremsassistent, sodass man immernoch rueckwaerts vom Objekt wegfahren kann)
 #
 # --- Version 0.2 ---
 # - Tests durchgefuehrt
@@ -35,11 +38,11 @@ SIG_PIN = 18  # GPIO-Pin der Servo
 _MIN_PW = 750    # minimale Impulsdauer in us (Falsche Werte koennen zu Beschaedigungen fuehren!)
 _MAX_PW = 2250   # max Impulsdauer in us (Falsche Werte koennen zu Beschaedigungen fuehren!)
 
-# Einschränkung des Bewegungsradiuses (in Prozent):
+# Einschraenkung des Bewegungsradiuses (in Prozent):
 # Die Werte ergeben sich durch den eingeschraenkten Lenkradius der Lenkmechanik.
-# Falsche Werte können zu Beschaedigungen fuehren!
+# Falsche Werte koennen zu Beschaedigungen fuehren!
 _RL = 33 # rechtes Limit in Prozent !MUSS kleiner als _LL sein
-_LL = 72 # linkes Limit in Prozent !MUSS größer als _RL sein
+_LL = 72 # linkes Limit in Prozent !MUSS groeßer als _RL sein
 
 # --- Motor ---
 PWM_FREQ = 50               # PWM-Frequenz
@@ -81,7 +84,7 @@ def steer(newPos):
 
 def set_current_pos():
     """
-    Setzt Servo auf zuletzt festgelegte Position
+    Setzt Servo auf zuletzt festgelegte Position.
     """
     return steer(_Pos)
 
@@ -93,9 +96,15 @@ def disable_steering():
     return l.set_servo_pulsewidth(SIG_PIN, 0)
 
 def get_pos():
+    """
+    Gibt die zuletzt festgelegte Position des Servos (zwischen 0 und 100) zurueck.
+    """
     return _Pos
 
 def get_pw():
+    """
+    Gibt die Pulsweite am Signal-Pin des Servos zurueck.
+    """
     return l.get_servo_pulsewidth(SIG_PIN)
 
 
@@ -105,9 +114,9 @@ def get_pw():
 
 def drive(speed):
     """
-    Setzt die Geschwindigkeit auf den übergebenen Prozentwert.
-    Bei einem negativen Wert fährt das Fahrzeug rückwärts.
-    Der Übergabewert muss zwischen -100 und 100 liegen!
+    Setzt die Geschwindigkeit auf den uebergebenen Prozentwert.
+    Bei einem negativen Wert faehrt das Fahrzeug rueckwaerts.
+    Der uebergabewert muss zwischen -100 und 100 liegen!
     Ausnahme: string 'stop' bewirkt Bremsen.
     """
     if speed == "stop":
@@ -125,11 +134,13 @@ def forward(speed):
         return -1
     if speed < 0 or speed > PWM_RANGE:
         raise ValueError("Speed out of range")
+    # Richtung festlegen:
     v.write(IN1, 0)
     v.write(IN2, 1)
     if DEBUG:
-        print("Driving forward with speed {} ...".format(speed * _Limit))
-    return v.set_PWM_dutycycle(EN,speed * _Limit)   
+        print("Driving forward with speed {} ...".format(int(speed * _Limit_F)))
+    # Geschwindigkeit ueber PWM festlegen:
+    return v.set_PWM_dutycycle(int(EN,speed * _Limit_F))   
 
 def backward(speed):
     if _BlockMtr:
@@ -137,11 +148,13 @@ def backward(speed):
         return -1
     if speed < 0 or speed > PWM_RANGE:
         raise ValueError("Speed out of range")
+    # Richtung festlegen
     v.write(IN1, 1)
     v.write(IN2, 0)
     if DEBUG:
-        print("Driving backward with speed {} ...".format(speed * _Limit))
-    return v.set_PWM_dutycycle(EN,speed * _Limit)
+        print("Driving backward with speed {} ...".format(int(speed * _Limit_B)))
+    # Geschwindigkeit ueber PWM festlegen:
+    return v.set_PWM_dutycycle(int(EN,speed * _Limit_B))
 
 
 def roll():
@@ -159,7 +172,7 @@ def brake():
 
 def get_speed():
     """
-    Gibt die aktuell gesetzte Geschwindigkeit als Prozentwert zwischen -100 und 100 zurück.
+    Gibt die aktuell gesetzte Geschwindigkeit als Prozentwert zwischen -100 und 100 zurueck.
     Ein negativer Wert bedeutet, dass sich das Fahrzeug rueckwaerts bewegt.
     """
     if v.read(IN1)==0 and v.read(IN2)==1:
@@ -169,29 +182,42 @@ def get_speed():
     else:
         return 0
 
-def set_speed_limit(l):
+def set_speed_limit(l, dir = "all"):
     """
     Ermoeglicht das Limitieren der Motorgeschwindigkeit.
     Das uebergebene Limit dient als Faktor fuer die Geschwindigkeit
     und muss zwischen 0 (Motor deaktiviert) und 100 (volle Geschwindigkeit) liegen.
+    mit dir = "forward"/"backward" kann festgelegt werden, dass das Limit nur beim
+    vorwaerts/rueckwaerts fahren angewendet wird.
     """
-    global _Limit
+    global _Limit_F, _Limit_B
     if l < 0 or l > 100:
         raise ValueError("Limit must be between 0 and 100")
-    _Limit = l/100
-    if DEBUG: print("Speedlimit set to {} Percent".format(l))
+    if dir = "all":
+        _Limit_F = _Limit_B = l/100
+    elif dir = "forward":
+        _Limit_F = l/100
+    elif dir = "backward":
+        _Limit_B = l/100
+    if DEBUG: print("Speedlimit set to {} Percent for direktion {}".format(l, dir))
     
 def get_speed_limit():
     global limit
     return limit
 
 def block_mtr():
+    """
+    Blockiert den Motor und verhindert, dass neue Fahranweisungen ausgefuehrt werden.
+    """
     global _BlockMtr
     roll()
     if DEBUG: print("Motor blocked. To be able to drive again, launch 'enable_mtr()'")
     _BlockMtr = True
 
 def deblock_mtr():
+    """
+    Loest die Blockade des Motors wieder, wenn diese zuvor durch die Funktion "block_mtr" aktiviert wurde.
+    """
     global _BlockMtr
     if DEBUG: print("Motor deblocked")
     _BlockMtr = False
@@ -202,9 +228,15 @@ def deblock_mtr():
 # --------------
 
 def enable_ir():
+    """
+    Aktiviert die IR-LEDs, die an der Kamera angebracht sind, um eine Nachtsichtfunktion zu ermoeglichen
+    """
     return v.write(IR, 1)
 
 def disable_ir():
+    """
+    Deaktiviert die IR-LEDs am Kamera-Modul, um Energie zu sparen.
+    """
     return v.write(IR, 0)
 
 # --------------
@@ -227,6 +259,10 @@ def close():
 # --------------
 
 def test():
+    """
+    Ermoeglicht einen einfachen Test aller Fahrfunktionen.
+    Wird ausgefuehrt, falls das Modul direkt als Skript aufgerufen wird.
+    """
     print("Testing Motor: \naccelerating Motor...")
     v = 10
     while v <= 100:
@@ -271,7 +307,7 @@ def test():
 
 # --- Initialisiere Lenkung ---
 
-# Prüfung auf gültige Eingaben:
+# Pruefung auf gueltige Eingaben:
 if (_RL not in range(101) or _LL not in range(101) or _LL < _RL):
     raise ValueError ("rl must be higher than ll and both must be Integers between 0 and 100!")
 
@@ -310,7 +346,7 @@ v.set_mode(EN, pigpio.OUTPUT)
 v.set_mode(IN1, pigpio.OUTPUT)
 v.set_mode(IN2, pigpio.OUTPUT)
 
-# PWM Einstellungen für en übernehmen:
+# PWM Einstellungen fuer en uebernehmen:
 v.set_PWM_frequency(EN, PWM_FREQ)
 v.set_PWM_range(EN, PWM_RANGE)
 

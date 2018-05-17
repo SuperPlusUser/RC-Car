@@ -1,12 +1,9 @@
-"""
-16x2 I2C Display
-Version 1.0.1
-DELOARTS Research Inc.
-Philip Delorenzo
-02.05.2016
-"""
-# Anmerkung: von smbus auf pigpio umgestellt
-# auf asyncio umgestellt
+# Basiert auf https://github.com/deloarts/rpi-16x2-display/blob/master/lcd.py
+# Anmerkungen:
+# - von smbus auf pigpio umgestellt
+# - auf asyncio umgestellt
+# - Funktion ergaenzt, die es ermoeglicht scrollenden Text anzuzeigen ("printScrollingString")
+
 
 import pigpio
 import asyncio
@@ -121,6 +118,7 @@ if __name__ == "__main__":
     try:
         loop = asyncio.get_event_loop()
         loop.run_until_complete(init())
+        # Zum Test einen scrollenden Text darstellen:
         loop.run_until_complete(printScrollingString("Zahlen:", "<1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20>", 10))
         loop.run_forever()
     finally:

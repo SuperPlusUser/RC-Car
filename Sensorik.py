@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 
-## Version 0.6.1
+## Version 0.7
 #
 ## Changelog:
+#
+# --- 0.7 ---
+# - Bremsassistent testweise eingebaut (Voraussetzung: Steuerung.py Version 0.3)
 #
 # --- 0.6.1 ---
 # - Bug behoben, der dafuer sorgte, dass 0 (=False) nicht als Sensor-Messwert ausgegeben wurde.
@@ -55,13 +58,6 @@
 
 ## TODO:
 # - Severity bei Alerts einbauen!
-# - Exception-Handling etc. bei der Seriellen-Verbindung mit dem Batt_Mon verbessern
-# - Testen wie sich das Programm verhaelt, wenn viele Sensoren oft ausgelesen werden
-# - Exceptions etc. in den Tasks werden nicht weitergegeben?!
-# - Kommentierung und Exception-Handling verbessern
-# - Uebersichtlichkeit verbessern
-# - Sensordaten in Datenbank eintragen? --> ermoeglicht (visuelle) Anzeige der Historie etc.
-# - Hin und wieder ist die IP noch nicht ausgelesen, bevor sie angezeigt wird. Es muesste gewartet werden bis der Thread fertig ist!
 
 
 import time
@@ -81,6 +77,7 @@ import Steuerung
 
 DEBUG = True if "-d" in sys.argv else False
 
+EN_BRAKE_ASSIST = True    # Bremsassistent aktivieren (=True) / deaktivieren (=False)
 DISP_BUTTON = 20
 BUZZER_PIN = 25
 BUZZER_FREQ = 800
@@ -250,7 +247,7 @@ class Sensor(metaclass=SensorMeta):
         muss in den erbenden Sensor-Klassen implementiert werden.
         Die Funktion wird bei jedem Aktualisieren der Sensordaten aufgerufen.
         Sie muss die Sensordaten aus cls.SensorData auslesen und je nach gegebenen
-        Bedingungen eine Alert-Nachricht oder False (kein Alert) zurückliefern.
+        Bedingungen eine Alert-Nachricht oder False (kein Alert) zurueckliefern.
         """
         return False
 
@@ -333,7 +330,7 @@ class Sensor(metaclass=SensorMeta):
 
     def getSensorData(self, OnlyNew = False, Refresh = False):
         """
-        Liefert den zuletzt ausgelesenen Wert des Sensors zurück.
+        Liefert den zuletzt ausgelesenen Wert des Sensors zurueck.
         Parameter: (OnlyNew = False, Refresh = False)
                     |                 |
                     |                 -> Wenn True: Die Sensordaten werden zuvor neu vom Sensor aktualisiert
@@ -341,7 +338,7 @@ class Sensor(metaclass=SensorMeta):
                     |                    "Refresh()" zwischengespeicherten Sensordaten werden ausgegeben
                     |
                     -> Wenn True: Es wird nur ein Rueckgabewert gegeben, falls die Sensordaten sich seit dem letzten Aufruf
-                       der Methode verändert haben, andernfalls: None.
+                       der Methode veraendert haben, andernfalls: None.
         """
         if Refresh: type(self).Refresh()    # Falls Refresh == True: Sensordaten vor der Rueckgabe aktualisieren
         Value = type(self).SensorData        # Das Klassen-Attribut "SensorData" in die lokale Variable "value" zwischenspeichern
@@ -529,6 +526,7 @@ class Sonar_Sensor_Front(Sensor):
     EN_BUZZER = True
 
     beep = False
+    brake = False
 
     @classmethod
     def ReadSensorData(cls):
@@ -539,18 +537,48 @@ class Sonar_Sensor_Front(Sensor):
     @classmethod
     def CheckAlerts(cls):
         global RearBeep
+        
         if cls.SensorData < 10:
             msg = "Crash!"
             if cls.EN_BUZZER: cls.i = 3
+            if EN_BRAKE_ASSIST:
+                # weiteres Vorwaertsfahren unterbinden
+                Steuerung.set_speed_limit(0, dir = "forward")
+                if not cls.brake:
+                    # nur einmal bremsen, ansonsten kommt man nicht mehr vom Fleck
+                    Steuerung.brake()
+                    cls.brake = True
+                
+            
         elif cls.SensorData < 25:
             msg = "close Obstacle!"
             if cls.EN_BUZZER: cls.i += 2
+            if EN_BRAKE_ASSIST:
+                # Geschwindigkeit auf 20% limitieren
+                Steuerung.set_speed_limit(20, dir = "forward")
+                if not cls.brake:
+                    # nur einmal bremsen, ansonsten kommt man nicht mehr vom Fleck
+                    Steuerung.brake()
+                    cls.brake = True
+            
         elif cls.SensorData < 50:
             msg = "distant Obstacle"
             if cls.EN_BUZZER: cls.i += 1
+            if EN_BRAKE_ASSIST:
+                # Geschwindigkeit auf 50% limitieren
+                Steuerung.set_speed_limit(50, dir = "forward")
+                if not cls.brake:
+                    # nur einmal bremsen, ansonsten kommt man nicht mehr vom Fleck
+                    Steuerung.brake()
+                    cls.brake = True
+            
         else:
             msg = False
-            if cls.EN_BUZZER: cls.i = 0
+            cls.i = 0
+            if EN_BRAKE_ASSIST:
+                # Bremsen wieder erlauben und Speedlimt zuruecksetzen
+                cls.brake = False
+                Steuerung.set_speed_limit(100, dir = "forward")
 
         if cls.EN_BUZZER:
             if cls.i >= 3:
