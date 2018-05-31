@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 
-## Version 0.3
+## Version 0.4
     
 ## Changelog:
+#
+# --- Version 0.4 ---
+# - Steuerung mit XBox-Controller (wieder) eingebaut (benoetigt "xbox_modified").
+# - Fehlerkorrekturen beim setzen des Speedlimits.
 #
 # --- Version 0.3 ---
 # - Moeglichkeit eingebaut IR-Beleuchtung der Kamera an und aus zu schalten.
@@ -20,10 +24,14 @@
 import time
 import sys
 import os               # wird verwendet, um pigpiod automatisch zu starten
+import subprocess
+from concurrent.futures import ThreadPoolExecutor
+import xbox_modified as xbox
 import pigpio
 # Verwendung: http://abyz.me.uk/rpi/pigpio/python.html#set_servo_pulsewidth
 # Beachten: bevor mittels l = pigpio.pi() eine Instanz der pigpio.pi Klasse
 # erstellt werden kann, muss der Daemon "pigpiod" mittels "sudo pigpiod" gestartet werden!
+
 
 
 # ---------------------------
@@ -31,6 +39,12 @@ import pigpio
 # ---------------------------
 
 DEBUG = True if "-d" in sys.argv else False
+
+# --- Enable / Disable XBox-Controller ---
+# Das Skript muss mit Root-Rechten ausgeführt werden, 
+# falls eine Steuerung mit XBox-Controller ermoeglicht werden soll!
+EN_XBOX_CONTROLLER = True
+
 
 # --- Lenkung ---
 # Eigenschaften der Servo:
@@ -140,7 +154,7 @@ def forward(speed):
     if DEBUG:
         print("Driving forward with speed {} ...".format(int(speed * _Limit_F)))
     # Geschwindigkeit ueber PWM festlegen:
-    return v.set_PWM_dutycycle(int(EN,speed * _Limit_F))   
+    return v.set_PWM_dutycycle(EN,int(speed * _Limit_F))   
 
 def backward(speed):
     if _BlockMtr:
@@ -154,7 +168,7 @@ def backward(speed):
     if DEBUG:
         print("Driving backward with speed {} ...".format(int(speed * _Limit_B)))
     # Geschwindigkeit ueber PWM festlegen:
-    return v.set_PWM_dutycycle(int(EN,speed * _Limit_B))
+    return v.set_PWM_dutycycle(EN,int(speed * _Limit_B))
 
 
 def roll():
@@ -193,11 +207,11 @@ def set_speed_limit(l, dir = "all"):
     global _Limit_F, _Limit_B
     if l < 0 or l > 100:
         raise ValueError("Limit must be between 0 and 100")
-    if dir = "all":
+    if dir == "all":
         _Limit_F = _Limit_B = l/100
-    elif dir = "forward":
+    elif dir == "forward":
         _Limit_F = l/100
-    elif dir = "backward":
+    elif dir == "backward":
         _Limit_B = l/100
     if DEBUG: print("Speedlimit set to {} Percent for direction {}".format(l, dir))
     
@@ -244,11 +258,16 @@ def close():
     """
     Gibt verwendete Ressourcen frei. Beim Beenden des Skripts ausfuehren!
     """
+    global EN_XBOX_CONTROLLER
     roll()
     disable_ir()
     v.stop()
     disable_steering()
     l.stop()
+    if EN_XBOX_CONTROLLER:
+        EN_XBOX_CONTROLLER = False
+        if executor:
+            executor.shutdown()
 
 
 # --------------
@@ -297,10 +316,61 @@ def test():
     print("all tests complete")
     return "finished"
 
+
+# ----------------------------------------------
+## --- control vehicle with XBox-controller ---
+# ----------------------------------------------
+
+def control_with_joystick():
+    joy = None
+    
+    print("Trying to connect to xbox controller... Press any button!")
+    try:
+        while not joy and EN_XBOX_CONTROLLER:
+            try:
+                joy = xbox.Joystick()
+                print("Connection to xbox dongle established successfully")
+            except IOError:
+                if DEBUG: print("Could not connect to xbox dongle. Trying again after 1 sec...")
+                time.sleep(1)
+
+        while EN_XBOX_CONTROLLER:
+            joy.refresh()
+            # blockiert solange, bis eine Taste gedrückt wird bzw. der Controller erneut aktualisiert wird
+            
+            if joy.connected():
+                # Motorsteuerung:
+                if joy.B():
+                    brake() # Bremsen mit B
+                else:
+                    drive((joy.rightTrigger()-joy.leftTrigger())*100)
+
+                # Lenkung:
+                steer((-1+joy.leftX())*-50)
+                
+                # Raspberry Pi herunterfahren mit Start und Back:
+                if joy.Back() and joy.Start():
+                    print("calling shutdown.sh and shutdown pi...")
+                    subprocess.call("/home/pi/RC-Car/shutdown.sh", shell = True)
+                    
+            else:
+                roll()
+                print("Connection to controller lost. Trying to reconnect...")
+                while not joy.connected() and EN_XBOX_CONTROLLER:
+                    time.sleep(1)
+                    joy.refresh()
+                if joy.connected():
+                    print("Controller successfully reconnected")
+    finally:
+        if joy:
+            joy.close()
+            print("connection to xbox controller closed")
     
 # --------------------------
 ## --- Initialisierungen ---
 # --------------------------
+
+executor = None
 
 # --- Initialisiere Lenkung ---
 
@@ -355,11 +425,22 @@ set_speed_limit(100)
 v.set_mode(IR, pigpio.OUTPUT)
 v.write(IR, 1) # IR-LED standardmaessig an
 
+
 # -------------
 ## --- Main ---
 # -------------
 
 if __name__ == "__main__":
-    DEBUG = True
-    test()
-    close()
+    try:
+        if EN_XBOX_CONTROLLER:
+            control_with_joystick()
+        else:
+            DEBUG = True
+            test()
+    finally:
+        close()
+else:
+    # Steuerung mit xbox controller in eigenem Thread:
+    if EN_XBOX_CONTROLLER:
+        executor = ThreadPoolExecutor(max_workers=2)
+        controller_future = executor.submit(control_with_joystick)

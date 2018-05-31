@@ -5,12 +5,20 @@
 
 import time
 import sys
+import subprocess
+from concurrent.futures import ThreadPoolExecutor
+import xbox_modified as xbox
 
 # ---------------------------
 ## --- Globale Konstanten ---
 # ---------------------------
 
 DEBUG = True
+
+# --- Enable / Disable XBox-Controller ---
+# Das Skript muss mit Root-Rechten ausgeführt werden, 
+# falls eine Steuerung mit XBox-Controller ermoeglicht werden soll!
+EN_XBOX_CONTROLLER = True
 
 # --- Lenkung ---
 # Eigenschaften der Servo:
@@ -161,8 +169,12 @@ def close():
     """
     Gibt verwendete Ressourcen frei. Beim Beenden des Skripts ausfuehren!
     """
+    global EN_XBOX_CONTROLLER
     roll()
     disable_steering()
+    if EN_XBOX_CONTROLLER:
+        EN_XBOX_CONTROLLER = False
+        executor.shutdown()
 
 
 # --------------
@@ -202,7 +214,57 @@ def test():
     print("all tests complete")
     return "finished"
 
+
+# ----------------------------------------------
+## --- control vehicle with XBox-controller ---
+# ----------------------------------------------
+
+def control_with_joystick():
+    joy = None
     
+    print("Trying to connect to xbox controller... Press any button!")
+    try:
+        while not joy and EN_XBOX_CONTROLLER:
+            try:
+                joy = xbox.Joystick()
+                print("Connection to xbox dongle established successfully")
+            except IOError:
+                if DEBUG: print("Could not connect to xbox dongle. Trying again after 1 sec...")
+                time.sleep(1)
+
+        while EN_XBOX_CONTROLLER:
+            joy.refresh()
+            # blockiert solange, bis eine Taste gedrückt wird bzw. der Controller erneut aktualisiert wird
+            
+            if joy.connected():
+                # Motorsteuerung:
+                if joy.B():
+                    brake() # Bremsen mit B
+                else:
+                    drive((joy.rightTrigger()-joy.leftTrigger())*100)
+
+                # Lenkung:
+                steer((-1+joy.leftX())*-50)
+                
+                # Raspberry Pi herunterfahren mit Start und Back:
+                if joy.Back() and joy.Start():
+                    print("calling shutdown.sh and shutdown pi...")
+                    subprocess.call("/home/pi/RC-Car/shutdown.sh", shell = True)
+                    
+            else:
+                roll()
+                print("Connection to controller lost. Trying to reconnect...")
+                while not joy.connected() and EN_XBOX_CONTROLLER:
+                    time.sleep(1)
+                    joy.refresh()
+                if joy.connected():
+                    print("Controller successfully reconnected")
+    finally:
+        if joy:
+            joy.close()
+            print("connection to xbox controller closed")
+            
+
 # --------------------------
 ## --- Initialisierungen ---
 # --------------------------
@@ -218,13 +280,17 @@ if (_RL not in range(101) or _LL not in range(101) or _LL < _RL):
 _k = (_MAX_PW - _MIN_PW)/100
 
 _MAX_PW = _LL * _k + _MIN_PW
-_MIN_PW = _RL * _k + _MAX_PW
+_MIN_PW = _RL * _k + _MIN_PW
 
-_k = (_MAX_PW - _MAX_PW)/100
+_k = (_MAX_PW - _MIN_PW)/100
 
 # Anfangsposition = Mittelstellung
 _Pos = 50
 
+# Initialisiere XBox Controller:
+if EN_XBOX_CONTROLLER:
+    executor = ThreadPoolExecutor(max_workers=2)
+    controller_future = executor.submit(control_with_joystick)
 
 # Sonstige Initialisierungen:
 deblock_mtr()
@@ -237,5 +303,7 @@ set_speed_limit(100)
 
 if __name__ == "__main__":
     DEBUG = True
-    test()
-    close()
+    try:
+        test()
+    finally:
+        close()

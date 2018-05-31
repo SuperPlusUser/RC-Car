@@ -220,11 +220,11 @@ class SRCCP(asyncio.Protocol):
 
                         elif command == "shutdown":
                             print("calling shutdown.sh and shutting down pi...")
-                            subprocess.call("~/RC-Car/shutdown.sh", shell = True)
+                            subprocess.call("/home/pi/RC-Car/shutdown.sh", shell = True)
 
                         elif command == "reboot":
                             print("calling reboot.sh and rebooting pi...")
-                            subprocess.call("~/RC-Car/reboot.sh", shell = True)
+                            subprocess.call("/home/pi/RC-Car/reboot.sh", shell = True)
 
                                 
                     elif root.tag == "msg":
