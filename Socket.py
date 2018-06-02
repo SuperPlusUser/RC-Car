@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 
-## Version 0.5.2
+## Version 0.6
 
 ## Changelog:
+#
+# --- 0.6 ---
+# - Automatisches Starten des Node-Red-Flows eingebaut
 #
 # --- 0.5.2 ---
 # - Befehle "shutdown", "reboot" und "irled" eingebaut
@@ -59,6 +62,8 @@ import Sensorik  #_fake as Sensorik
 
 IP = ""
 PORT = 8889
+
+EN_NODE_RED = True # Falls True: Node-RED automatisch starten (muss installiert sein!)
 
 DEBUG = True if "-d" in sys.argv else False
 
@@ -452,11 +457,15 @@ if DEBUG:
 # Serve requests until Ctrl+C is pressed
 print('Serving on {}'.format(server.sockets[0].getsockname()))
 
+# Starte Node-RED:
+if EN_NODE_RED:
+    subprocess.call("node-red-pi -u /home/pi/RC-Car/Node-RED/ RC-Car-Flow.json &", shell = True)
+
+#definiere und registriere sigterm handler:
 def sigterm_handler(_signo, _stack_frame):
     print("Script terminated.")
     sys.exit(0)
-
-#register sigterm_handler:
+    
 signal.signal(signal.SIGTERM, sigterm_handler)
 
 try:
@@ -465,6 +474,8 @@ except KeyboardInterrupt:
     print("Interrupted by user.")
 finally:
     print("Cleaning up...")
+    if EN_NODE_RED:
+        subprocess.call("pkill -f node-red --signal SIGINT", shell = True)
     # Close the server:
     server.close()
     loop.run_until_complete(server.wait_closed())
