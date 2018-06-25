@@ -32,6 +32,8 @@ import pigpio
 # Beachten: bevor mittels l = pigpio.pi() eine Instanz der pigpio.pi Klasse
 # erstellt werden kann, muss der Daemon "pigpiod" mittels "sudo pigpiod" gestartet werden!
 
+import light
+
 
 
 # ---------------------------
@@ -67,9 +69,6 @@ PWM_RANGE = 100             # Dutycycle-Range
 EN = 17                 # Hauptmotor
 IN1 = 27                # Motor Forwaerts: 0
 IN2 = 22                # Motor Forwaerts: 1
-
-# --- Beleuchtung ---
-IR = 21
 
 
 # ----------------
@@ -153,6 +152,8 @@ def forward(speed):
     v.write(IN2, 1)
     if DEBUG:
         print("Driving forward with speed {} ...".format(int(speed * _Limit_F)))
+    light.brake_light(0)
+    light.reverse_light(0)
     # Geschwindigkeit ueber PWM festlegen:
     return v.set_PWM_dutycycle(EN,int(speed * _Limit_F))   
 
@@ -167,12 +168,16 @@ def backward(speed):
     v.write(IN2, 0)
     if DEBUG:
         print("Driving backward with speed {} ...".format(int(speed * _Limit_B)))
+    light.brake_light(0)
+    light.reverse_light(1)
     # Geschwindigkeit ueber PWM festlegen:
     return v.set_PWM_dutycycle(EN,int(speed * _Limit_B))
 
 
 def roll():
     if DEBUG: print("let vehicle roll free")
+    light.brake_light(0)
+    light.reverse_light(0)
     return v.set_PWM_dutycycle(EN,0)
 
 def brake():
@@ -182,6 +187,8 @@ def brake():
     v.write(IN1, 1)
     v.write(IN2, 1)
     if DEBUG: print("Braking vehicle")
+    light.brake_light(1)
+    light.reverse_light(0)
     return v.set_PWM_dutycycle(EN,PWM_RANGE)
 
 def get_speed():
@@ -242,13 +249,13 @@ def enable_ir():
     """
     Aktiviert die IR-LEDs, die an der Kamera angebracht sind, um eine Nachtsichtfunktion zu ermoeglichen
     """
-    return v.write(IR, 1)
+    return light.change_mode(mode = 10)
 
 def disable_ir():
     """
     Deaktiviert die IR-LEDs am Kamera-Modul, um Energie zu sparen.
     """
-    return v.write(IR, 0)
+    return light.change_mode(mode = 0)
 
 # --------------
 ## --- close ---
@@ -264,10 +271,12 @@ def close():
     v.stop()
     disable_steering()
     l.stop()
+    light.Pixels.clear()
+    light.Pixels.show()
     if EN_XBOX_CONTROLLER:
         EN_XBOX_CONTROLLER = False
-        if executor:
-            executor.shutdown()
+        #if executor:
+        #    executor.shutdown()
 
 
 # --------------
@@ -329,10 +338,10 @@ def control_with_joystick():
         while not joy and EN_XBOX_CONTROLLER:
             try:
                 joy = xbox.Joystick()
-                print("Connection to xbox dongle established successfully")
-            except IOError:
-                if DEBUG: print("Could not connect to xbox dongle. Trying again after 1 sec...")
-                time.sleep(1)
+                print("Connection to xbox controller established successfully")
+            except IOError as e:
+                if DEBUG:
+                    print("Could not connect to xbox controller.\nError: {}\nTrying again...".format(e))
 
         while EN_XBOX_CONTROLLER:
             joy.refresh()
@@ -348,6 +357,14 @@ def control_with_joystick():
                 # Lenkung:
                 steer((-1+joy.leftX())*-50)
                 
+                #Licht an/aus
+                if joy.dpadUp():
+                    light.front_light(on = "toggle")
+                    
+                #change Light Mode
+                if joy.dpadDown():
+                    light.change_mode(mode = "toggle")
+                
                 # Raspberry Pi herunterfahren mit Start und Back:
                 if joy.Back() and joy.Start():
                     print("calling shutdown.sh and shutdown pi...")
@@ -361,6 +378,9 @@ def control_with_joystick():
                     joy.refresh()
                 if joy.connected():
                     print("Controller successfully reconnected")
+    except Exception as e:
+        print("Joystick Thread exited with Exception: ", e)
+        
     finally:
         if joy:
             joy.close()
@@ -420,10 +440,6 @@ v.set_PWM_range(EN, PWM_RANGE)
 # Sonstige Initialisierungen:
 deblock_mtr()
 set_speed_limit(100)
-
-# --- Initialisiere IR-LED ---
-v.set_mode(IR, pigpio.OUTPUT)
-v.write(IR, 1) # IR-LED standardmaessig an
 
 
 # -------------

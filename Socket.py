@@ -60,10 +60,12 @@ import subprocess
 import Steuerung #_fake as Steuerung
 import Sensorik  #_fake as Sensorik
 
+import light
+
 IP = ""
 PORT = 8889
 
-EN_NODE_RED = True # Falls True: Node-RED automatisch starten (muss installiert sein!)
+EN_NODE_RED = False # Falls True: Node-RED automatisch starten (muss installiert sein!)
 
 DEBUG = True if "-d" in sys.argv else False
 
@@ -225,7 +227,7 @@ class SRCCP(asyncio.Protocol):
 
                         elif command == "shutdown":
                             print("calling shutdown.sh and shutting down pi...")
-                            subprocess.call("/home/pi/RC-Car/shutdown.sh", shell = True)
+                            subprocess.call("/home/pi/RC-Car/.sh", shell = True)
 
                         elif command == "reboot":
                             print("calling reboot.sh and rebooting pi...")
@@ -434,25 +436,23 @@ loop = asyncio.get_event_loop()
 
 # Im Autostart muss etwas gewartet werden, bis das Netzwerk initialisiert ist und der Serielle Port verfuegbar ist:
 if "-a" in sys.argv:
-    import lcd
-    import time
-    loop.run_until_complete(lcd.init())
-    loop.run_until_complete(lcd.printString("Starting Socket-", lcd.line1))
-    loop.run_until_complete(lcd.printString("Server ...", lcd.line2))
-    time.sleep(10)
-
+    #import lcd
+    #loop.run_until_complete(lcd.init())
+    #loop.run_until_complete(lcd.printString("Starting Socket-", lcd.line1))
+    #loop.run_until_complete(lcd.printString("Server ...", lcd.line2))
+    light.appear_from_back_blocking(color = (0,100,0))
 
 # Each client connection will create a new protocol instance
 coro = loop.create_server(SRCCP, IP, PORT)
 server = loop.run_until_complete(coro)
-
-Sensorik.init(loop)
               
 if DEBUG:
     # Enable Debugging mode of asyncio:
     loop.set_debug(True)
     import logging
     logging.basicConfig(level=logging.DEBUG)
+
+Sensorik.init(loop)
 
 # Serve requests until Ctrl+C is pressed
 print('Serving on {}'.format(server.sockets[0].getsockname()))

@@ -123,6 +123,9 @@ def init(_loop):
     pi.set_PWM_frequency(BUZZER_PIN, BUZZER_FREQ)
     pi.set_PWM_range(BUZZER_PIN, 100)
     pi.set_PWM_dutycycle(BUZZER_PIN, 0)
+    
+    #Starte LED-Beleuchtung in Mode 0:
+    Steuerung.light.change_mode(mode = 0)
 
 def init_disp(loop):
     global DispSenNr, DispSen, lastTick, DispAlert
@@ -167,6 +170,8 @@ def DisplayAlert(Type, Msg):
     global DispAlert
     if not DispAlert: #Alerts nur einmal anzeigen --> verhindert ein "ueberfordern" des Displays
         asyncio.run_coroutine_threadsafe(lcd.printScrollingString("!ALERT!" + ":" + str(Type), str(Msg)), loop)
+        # light-mode auf -1 (Alert) stellen:
+        Steuerung.light.change_mode(mode = -1)
         DispAlert = True
 
 #Callback function fuer Button:
@@ -179,6 +184,7 @@ def DisplayNextSensorData(gpio, level, tick):
         if DispAlert:
             DispAlert = False # Bei Tastendruck verschwinden Alerts solange, bis ein neuer Alert angezeigt wird
             DisplaySensorData(DispSen.NAME, DispSen.SensorData, DispSen.UNIT)
+            Steuerung.light.change_mode(mode = 0)
         else:
             DispSen.desubscribe()
             DispSenNr = (DispSenNr + 1) % len(SensorenList)
@@ -718,7 +724,7 @@ class BMP_Altitude(Sensor):
 class Mtr_Speed(Sensor):
     NAME = "Motor-Speed"
     UNIT = "%"
-    REFRESH_TIME = 1
+    REFRESH_TIME = 0.5
 
     @classmethod
     def ReadSensorData(cls):
@@ -727,7 +733,7 @@ class Mtr_Speed(Sensor):
 class Lnk_Pos(Sensor):
     NAME = "Lenk-Position"
     UNIT = ""
-    REFRESH_TIME = 1
+    REFRESH_TIME = 0.5
 
     @classmethod
     def ReadSensorData(cls):

@@ -11,6 +11,8 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 executor = ThreadPoolExecutor(max_workers = 5)
 
+import Steuerung
+
 DEBUG = True if "-d" in sys.argv else False
 
 # ---------------------------
@@ -34,6 +36,8 @@ def init(_loop):
         Sensoren[Sen]._AutoRefresh()
         # Print all Alerts to StdOut:
         Sensoren[Sen].SubscribeAlerts(PrintAlerts)
+    
+    Steuerung.light.change_mode(mode = 2)
  
 def close():
     global shutdown
@@ -218,7 +222,7 @@ class Sensor(metaclass=SensorMeta):
                   als das Intervall, in dem die jeweiligen Sensordaten aktualisiert werden (REFRESH_TIME)!
         """
         Data = self.getSensorData(OnlyNew)
-        if Data:
+        if Data is not None:
             if DEBUG: print("Sending Sensor Data: {}".format(Data))
             Output(str(type(self).NAME), str(Data), str(type(self).UNIT))
         if self._sub and not shutdown:
@@ -238,25 +242,6 @@ class Sensor1(Sensor):
     @classmethod
     def ReadSensorData(cls):
         return "xyz"
-
-x = 0 # Initialisierung der Test-Variable fuer Sensor 2
-class Sensor2(Sensor):
-    NAME = "2"
-    REFRESH_TIME = 10
-    UNIT = "°C"
-
-    @classmethod
-    def ReadSensorData(cls):
-        global x
-        x+=1
-        return x
-
-    @classmethod
-    def CheckAlerts(cls):
-        #if int(cls.SensorData) > 10:
-        #    return "Value of Sensor2 over 10: {}".format(cls.SensorData)
-        #else:
-        return False
 
 class Sensor3(Sensor):
     NAME = "3"
@@ -281,6 +266,48 @@ class IP_Addr(Sensor):
         IP = strIP.split('\n')[0]
         return IP
 
+class Mtr_Speed(Sensor):
+    NAME = "Motor-Speed"
+    UNIT = "%"
+    REFRESH_TIME = 0.5
+
+    @classmethod
+    def ReadSensorData(cls):
+        return Steuerung.get_speed()
+    
+class Lnk_Pos(Sensor):
+    NAME = "Lenk-Position"
+    UNIT = ""
+    REFRESH_TIME = 0.5
+
+    @classmethod
+    def ReadSensorData(cls):
+        return int(Steuerung.get_pos())
+
+class Batt_Mon_Current(Sensor):
+    NAME = "Batt.-Current"
+    UNIT = "A"
+    REFRESH_TIME = 1
+    
+    X = 2
+
+    @classmethod
+    def ReadSensorData(cls):
+        #cls.X = (cls.X + 0.1) % 2
+        return cls.X - 1
+    
+class Batt_Mon_Charge(Sensor):
+    NAME = "Batt.-Charge"
+    UNIT = "mAh"
+    REFRESH_TIME = 1
+    
+    X = 4000
+    MAX_CHARGE = 4000 # mAh
+
+    @classmethod
+    def ReadSensorData(cls):
+        cls.X = (cls.X -100) % (cls.MAX_CHARGE + 100)
+        return cls.X
 
 # Hier weitere konkrete Sensoren nach obigen Beispielen einfuegen...
 
