@@ -289,7 +289,7 @@ class Sensor(metaclass=SensorMeta):
 
     @classmethod
     def GetAlert(cls):
-            return cls.AlertMsg
+            return cls.AlertMsg + ": " + str(cls.SensorData)
 
     @classmethod
     def _AutoRefresh(cls):
@@ -444,7 +444,9 @@ class Batt_Mon_Voltage(Batt_Mon, Sensor):
     def ReadSensorData(cls):
         Start = Batt_Mon.SensorData.find(b'V: ') + 3
         End = Batt_Mon.SensorData.find(b',', Start)
-        return float(Batt_Mon.SensorData[Start : End].decode())
+        voltage = float(Batt_Mon.SensorData[Start : End].decode())
+        if 8 < voltage < 13: return voltage
+        else: return cls.SensorData
             
     @classmethod
     def CheckAlerts(cls):
@@ -462,11 +464,13 @@ class Batt_Mon_Current(Batt_Mon, Sensor):
     def ReadSensorData(cls):
         Start = Batt_Mon.SensorData.find(b'A: ') + 3
         End = Batt_Mon.SensorData.find(b',', Start)
-        return float(Batt_Mon.SensorData[Start : End].decode())
+        current = float(Batt_Mon.SensorData[Start : End].decode())
+        if -10 < current < 2: return current
+        else: return cls.SensorData
 
     @classmethod
     def CheckAlerts(cls):
-        if abs(cls.SensorData) > 5:
+        if abs(cls.SensorData) > 6:
             return "High Current"
         else:
             return False
@@ -474,13 +478,16 @@ class Batt_Mon_Current(Batt_Mon, Sensor):
 class Batt_Mon_Charge(Batt_Mon, Sensor):
     NAME = "Batt.-Charge"
     UNIT = "mAh"
+    MAX_CHARGE = 4800 # Maximale Ladung des Akkus
     #REFRESH_TIME wird durch Batt_Mon vorgegeben!
 
     @classmethod
     def ReadSensorData(cls):
         Start = Batt_Mon.SensorData.find(b'C: ') + 3
         End = Batt_Mon.SensorData.find(b',', Start)
-        return float(Batt_Mon.SensorData[Start : End].decode())
+        charge = float(Batt_Mon.SensorData[Start : End].decode())
+        if 0 < charge < cls.MAX_CHARGE: return charge
+        else: return cls.SensorData
 
     @classmethod
     def CheckAlerts(cls):
@@ -522,7 +529,7 @@ class IP_Addr(Sensor):
 
 class Sonar_Sensor_Front(Sensor):
     NAME = "Distance Front"
-    REFRESH_TIME = 0.4
+    REFRESH_TIME = 0.5
     UNIT = "cm"
 
     SONAR_TRIGGER = 19
@@ -600,7 +607,7 @@ class Sonar_Sensor_Front(Sensor):
 
 class Sonar_Sensor_Rear(Sensor):
     NAME = "Distance Rear"
-    REFRESH_TIME = 0.4
+    REFRESH_TIME = 0.6
     UNIT = "cm"
 
     SONAR_TRIGGER = 23
@@ -648,7 +655,7 @@ class Sonar_Sensor_Rear(Sensor):
 class DS18B20_1(Sensor):
     NAME = "Motor-Temp."
     UNIT = "°C"
-    REFRESH_TIME = 3
+    REFRESH_TIME = 30
 
     SLAVE_NAME = "10-000802015d01"
 
@@ -675,7 +682,7 @@ class DS18B20_1(Sensor):
 class DHT22_Temp(Sensor):
     NAME = "Aussen-Temp"
     UNIT = "°C"
-    REFRESH_TIME = 10
+    REFRESH_TIME = 45
     
     sensor = Adafruit_DHT.DHT22
     gpio = 6
@@ -690,7 +697,7 @@ class DHT22_Temp(Sensor):
 class DHT22_Hum(Sensor):
     NAME = "Luftfeuchtigkeit"
     UNIT = "%"
-    REFRESH_TIME = 10 # Der Sensor wird eigentlich durch die Klasse DHT22_Temp mit aktualisiert,
+    REFRESH_TIME = 45 # Der Sensor wird eigentlich durch die Klasse DHT22_Temp mit aktualisiert,
     # die Refresh-Time muss hier nur als Default-Subscribe-Zeit angegeben werden.
     
     @classmethod
@@ -703,7 +710,7 @@ bmp = Adafruit_BMP.BMP085.BMP085()
 class BMP085_Pressure(Sensor):
     NAME = "Luftdruck"
     UNIT = "hPa"
-    REFRESH_TIME = 10
+    REFRESH_TIME = 60
     
     @classmethod
     def ReadSensorData(cls):
@@ -714,11 +721,15 @@ class BMP085_Pressure(Sensor):
 class BMP_Altitude(Sensor):
     NAME = "Hoehe"
     UNIT = "m"
-    REFRESH_TIME = 10
+    REFRESH_TIME = 60
+    
+    sealevel_pa=101325.0
     
     @classmethod
     def ReadSensorData(cls):
-        altitude = bmp.read_altitude()
+        pressure = BMP085_Pressure.SensorData
+        if pressure == None: return None
+        altitude = 44330.0 * (1.0 - pow(pressure * 100 / cls.sealevel_pa, (1.0/5.255)))
         return float("{0:0.1f}".format(altitude))
 
 class Mtr_Speed(Sensor):

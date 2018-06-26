@@ -65,7 +65,7 @@ import light
 IP = ""
 PORT = 8889
 
-EN_NODE_RED = False # Falls True: Node-RED automatisch starten (muss installiert sein!)
+EN_NODE_RED = True # Falls True: Node-RED automatisch starten (muss installiert sein!)
 
 DEBUG = True if "-d" in sys.argv else False
 
@@ -436,11 +436,12 @@ loop = asyncio.get_event_loop()
 
 # Im Autostart muss etwas gewartet werden, bis das Netzwerk initialisiert ist und der Serielle Port verfuegbar ist:
 if "-a" in sys.argv:
-    #import lcd
-    #loop.run_until_complete(lcd.init())
-    #loop.run_until_complete(lcd.printString("Starting Socket-", lcd.line1))
-    #loop.run_until_complete(lcd.printString("Server ...", lcd.line2))
-    light.appear_from_back_blocking(color = (0,100,0))
+    import lcd
+    loop.run_until_complete(lcd.init())
+    loop.run_until_complete(lcd.printString("Starting Socket-", lcd.line1))
+    loop.run_until_complete(lcd.printString("Server ...", lcd.line2))
+    # Warte-Animation:
+    light.appear_from_back_blocking(step = 1)
 
 # Each client connection will create a new protocol instance
 coro = loop.create_server(SRCCP, IP, PORT)

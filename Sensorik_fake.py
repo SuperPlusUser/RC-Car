@@ -37,7 +37,7 @@ def init(_loop):
         # Print all Alerts to StdOut:
         Sensoren[Sen].SubscribeAlerts(PrintAlerts)
     
-    Steuerung.light.change_mode(mode = 2)
+    Steuerung.light.change_mode(mode = 0)
  
 def close():
     global shutdown

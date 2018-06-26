@@ -13,22 +13,22 @@ import Sensorik #_fake as Sensorik
  
  
 # Configure the count of pixels:
-PIXEL_COUNT = 64
+PIXEL_COUNT = 40
  
 # Alternatively specify a hardware SPI connection on /dev/spidev0.0:
 SPI_PORT   = 0
 SPI_DEVICE = 0
 Pixels = Adafruit_WS2801.WS2801Pixels(PIXEL_COUNT, spi=SPI.SpiDev(SPI_PORT, SPI_DEVICE), gpio=GPIO)
 
-BLINK_LEFT = (3,4,5)
-BLINK_RIGHT = (10,11,12)
+BLINK_RIGHT = (3, 4, 5)
+BLINK_LEFT = (34, 35, 36)
 
-BRAKE_LIGHT = (1,2, 13,14)
-FRONT_LIGHT = (6,7,8,9)
-BACK_LICHT = (0, 15)
-REVERSE_LIGHT = (16,17,18)
+BRAKE_LIGHT = (17, 18, 21, 22)
+FRONT_LIGHT = (0, 1, 2, 37, 38, 39)
+BACK_LICHT = (16, 23)
+REVERSE_LIGHT = (19, 20)
 
-light_modes = (-1,0,1,2,10)
+light_modes = (-1,0,1,10)
 light_mode = 0
 light_events = {}
 for mode in light_modes:
@@ -195,8 +195,7 @@ def reverse_light(on = True, area = REVERSE_LIGHT, pixels = Pixels, color = (255
 
 class battery():
     
-    def __init__(self, pixels = Pixels, color = (100, 0, 0)):
-        self.color = color
+    def __init__(self, pixels = Pixels):
         self.pixels = Pixels
         self.BattSenCurrent = None
         self.BattSenCharge = None
@@ -227,9 +226,10 @@ class battery():
         if self.light_mode == light_mode:
             self.pixels.clear()
             if not self.toggle_off:
-                activatedPixels = int(float(Data) / type(self.BattSenCharge).MAX_CHARGE * self.pixels.count())
+                percent = int(float(Data) / type(self.BattSenCharge).MAX_CHARGE * 100)
+                activatedPixels =  int(percent * self.pixels.count() / 100)
                 for pixel in range(activatedPixels):
-                    self.pixels.set_pixel_rgb(pixel, self.color[0], self.color[1], self.color[2])
+                    self.pixels.set_pixel_rgb(pixel, 256 - 2 * percent, percent, 0)
                 if self.Blink:
                     self.toggle_off = True
             else:
@@ -237,7 +237,7 @@ class battery():
             self.pixels.show()
             
     def receive_current(self, Sensor, Data, Unit):
-        if float(Data) < 0:
+        if float(Data) > 0:
             #Beim Laden Blinken aktivieren:
             self.Blink = True
         else:
@@ -347,6 +347,11 @@ def change_mode(mode = "toggle"):
     
     print("Light Mode set to", light_mode)
     
+    if light_mode == -1:
+        light_events[light_mode] = threading.Event()
+        thread = threading.Thread(target=blink, kwargs={'blink_times':10, 'color':(100, 0, 0)})
+        thread.start()
+        
     if light_mode == 0:
         Blinker.start()
         front_light(on = True)
@@ -361,16 +366,11 @@ def change_mode(mode = "toggle"):
         light_events[light_mode] = None
     else:
         Battery.stop()     
-            
-    if light_mode == 2:
-        light_events[light_mode] = threading.Event()
-        thread = threading.Thread(target=blink, kwargs={'blink_times':10})
-        thread.start()
         
     if light_mode == 10:
         l.write(IR, 1)
     else:
-        v.write(IR, 0)
+        l.write(IR, 0)
 
 
 
