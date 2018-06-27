@@ -63,7 +63,7 @@
 import time
 import sys
 from concurrent.futures import ThreadPoolExecutor
-executor = ThreadPoolExecutor(max_workers = 5) # max_workers erhoehen bei Problemen?
+executor = ThreadPoolExecutor(max_workers = 8) # max_workers erhoehen bei Problemen?
 import pigpio
 import subprocess
 import asyncio
@@ -459,6 +459,7 @@ class Batt_Mon_Current(Batt_Mon, Sensor):
     NAME = "Batt.-Current"
     UNIT = "A"
     #REFRESH_TIME wird durch Batt_Mon vorgegeben!
+    charging = False
 
     @classmethod
     def ReadSensorData(cls):
@@ -470,6 +471,14 @@ class Batt_Mon_Current(Batt_Mon, Sensor):
 
     @classmethod
     def CheckAlerts(cls):
+        # Anzeige der Akkukapazitaet mit den LEDs beim Laden:
+        if cls.SensorData > 0 and not cls.charging:
+            Steuerung.light.change_mode(mode = 1)
+            cls.charging = True
+        elif cls.SensorData < 0 and cls.charging:
+            Steuerung.light.change_mode(mode = 0)
+            cls.charging = False
+
         if abs(cls.SensorData) > 6:
             return "High Current"
         else:
@@ -486,7 +495,7 @@ class Batt_Mon_Charge(Batt_Mon, Sensor):
         Start = Batt_Mon.SensorData.find(b'C: ') + 3
         End = Batt_Mon.SensorData.find(b',', Start)
         charge = float(Batt_Mon.SensorData[Start : End].decode())
-        if 0 < charge < cls.MAX_CHARGE: return charge
+        if 0 <= charge <= cls.MAX_CHARGE: return charge
         else: return cls.SensorData
 
     @classmethod

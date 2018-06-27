@@ -1,7 +1,7 @@
 # Simple demo of of the WS2801/SPI-like addressable RGB LED lights.
 import time
 import RPi.GPIO as GPIO
- 
+
 # Import the WS2801 module.
 import Adafruit_WS2801
 import Adafruit_GPIO.SPI as SPI
@@ -10,11 +10,11 @@ import threading
 import pigpio
 
 import Sensorik #_fake as Sensorik
- 
- 
+
+
 # Configure the count of pixels:
 PIXEL_COUNT = 40
- 
+
 # Alternatively specify a hardware SPI connection on /dev/spidev0.0:
 SPI_PORT   = 0
 SPI_DEVICE = 0
@@ -33,14 +33,14 @@ light_mode = 0
 light_events = {}
 for mode in light_modes:
     light_events[mode] = None
-    
+
 # --- Initialisiere IR-LED ---
 IR = 21
 l = pigpio.pi()
 l.set_mode(IR, pigpio.OUTPUT)
 l.write(IR, 0) # IR-LED standardmaessig aus
 
- 
+
 # --- Effects ---- 
 # Define the wheel function to interpolate between different hues.
 def wheel(pos):
@@ -52,58 +52,8 @@ def wheel(pos):
     else:
         pos -= 170
         return Adafruit_WS2801.RGB_to_color(0, pos * 3, 255 - pos * 3)
- 
-# Define rainbow cycle function to do a cycle of all hues.
-def rainbow_cycle_successive(pixels = Pixels, wait=0.1):
-    for i in range(pixels.count()):
-        # tricky math! we use each pixel as a fraction of the full 96-color wheel
-        # (thats the i / strip.numPixels() part)
-        # Then add in j which makes the colors go around per pixel
-        # the % 96 is to make the wheel cycle around
-        pixels.set_pixel(i, wheel(((i * 256 // pixels.count())) % 256) )
-        pixels.show()
-        if wait > 0:
-            time.sleep(wait)
- 
-def rainbow_cycle(pixels = Pixels, wait=0.005):
-    for j in range(256): # one cycle of all 256 colors in the wheel
-        for i in range(pixels.count()):
-            pixels.set_pixel(i, wheel(((i * 256 // pixels.count()) + j) % 256) )
-        pixels.show()
-        if wait > 0:
-            time.sleep(wait)
- 
-def rainbow_colors(pixels = Pixels, wait=0.05):
-    for j in range(256): # one cycle of all 256 colors in the wheel
-        for i in range(pixels.count()):
-            pixels.set_pixel(i, wheel(((256 // pixels.count() + j)) % 256) )
-        pixels.show()
-        if wait > 0:
-            time.sleep(wait)
-            
-def spin(pixels = Pixels, color="changing", step = 1, wait = 0.02, reverse = False):
-    pos = 0
-    if color == "changing":
-        change = True
-    else:
-        change = False
-        
-    if reverse:
-        Range = reversed(range(0, pixels.count()- step + 1, step))
-    else:
-        Range = range(0, pixels.count()- step + 1, step)
-        
-    for j in Range:
-        pixels.clear()
-        if change:
-            for l in range(j, j+step):
-                pixels.set_pixel(l, wheel(((j * 256 // pixels.count())) % 256))
-        else:
-            for l in range(j, j+step):
-                pixels.set_pixel(l, Adafruit_WS2801.RGB_to_color( color[0], color[1], color[2] ))
-        pixels.show()
-        time.sleep(wait)
- 
+
+
 def appear_from_back_blocking(pixels = Pixels, color="changing", step = 1, wait = 0.02):
     pos = 0
     if color == "changing":
@@ -128,7 +78,8 @@ def appear_from_back_blocking(pixels = Pixels, color="changing", step = 1, wait 
                     pixels.set_pixel(l, Adafruit_WS2801.RGB_to_color( color[0], color[1], color[2] ))
             pixels.show()
             time.sleep(wait)
-            
+
+ 
 def blink(pixels = Pixels, blink_range = range(Pixels.count()), blink_delay = 0.5, color = (255, 50, 0), blink_times = 1):
     blink_counter = 0
     current_light_mode = light_mode
@@ -148,7 +99,7 @@ def blink(pixels = Pixels, blink_range = range(Pixels.count()), blink_delay = 0.
         finally:
             for i in blink_range:
                 pixels.set_pixel_rgb(i, 0, 0, 0)
-            pixels.show()         
+            pixels.show()
  
 # -------------- 
 # --- MODE 0 ---
@@ -160,7 +111,7 @@ def front_light(on = "toggle", area = FRONT_LIGHT, area_back = BACK_LICHT, pixel
             front_light_on = not front_light_on
         else:
             front_light_on = on
-        
+
         if front_light_on:
             for pixel in area:
                 pixels.set_pixel_rgb(pixel, color[0], color[1], color[2])
@@ -170,7 +121,7 @@ def front_light(on = "toggle", area = FRONT_LIGHT, area_back = BACK_LICHT, pixel
             for pixel in area + area_back:
                 pixels.set_pixel_rgb(pixel, 0, 0, 0)
         pixels.show()
-            
+
 def brake_light(on = True, area = BRAKE_LIGHT, pixels = Pixels, color = (255, 0, 0)):
     if light_mode == 0:
         if on:
@@ -180,7 +131,7 @@ def brake_light(on = True, area = BRAKE_LIGHT, pixels = Pixels, color = (255, 0,
             for pixel in area:
                 pixels.set_pixel_rgb(pixel, 0, 0, 0)
         #pixels.show()
-            
+
 def reverse_light(on = True, area = REVERSE_LIGHT, pixels = Pixels, color = (255, 120, 100)):
     if light_mode == 0:
         if on:
@@ -189,7 +140,7 @@ def reverse_light(on = True, area = REVERSE_LIGHT, pixels = Pixels, color = (255
         else:
             for pixel in area:
                 pixels.set_pixel_rgb(pixel, 0, 0, 0)
-                
+
 # ---------------
 
 
@@ -294,48 +245,20 @@ class blinker():
             self.pixels.set_pixel_rgb(pixel, 0, 0, 0)
         self.pixels.show()
         self.LED_ON = False
-        
-class spinner():
-    
-    def __init__(self, pixels = Pixels, color = "change"):
-        self.LED_ON = False
-        self.color = color
-        self.pixels = Pixels
-        self.SpeedSen = None
-        
-    def start(self):
-        self.light_mode = light_mode
-        
-        if not self.SpeedSen:
-            self.SpeedSen = Sensorik.Mtr_Speed()
-            self.SpeedSen.subscribe(self.receive_speed, OnlyNew = False, time = 0.5)
-            
-    def stop(self):
-        if self.SpeedSen:
-            self.SpeedSen.desubscribe()
-            self.SpeedSen = None
-        
-    def receive_speed(self, Sensor, Data, Unit):
-        if self.light_mode == light_mode:
-            pass#TODO
-        
-        
+ 
 Battery = battery()
 Blinker = blinker()
-Spinner = spinner()
 
 def change_mode(mode = "toggle"):
-    global light_mode, light_thread, light_events
-    #light_mode = 0 # Normal (Bremslicht etc.) = 0, Alert = -1, Farbwechsel etc > 0...
-    global Blinker
-    
+    global light_mode, light_thread, light_events, Blinker
+
     # Stop light_threads:
     if light_events[light_mode]:
         light_events[light_mode].set()
-        
+
     Pixels.clear()
     Pixels.show()  # Make sure to call show() after changing any pixels!
-    
+
     if mode == "toggle":
         light_mode = light_modes[(light_modes.index(light_mode) + 1) % len(light_modes)]
         while light_mode < 0:
@@ -344,14 +267,15 @@ def change_mode(mode = "toggle"):
         light_mode = mode
     else:
         raise ValueError("invalid light_mode")
-    
+
+
     print("Light Mode set to", light_mode)
-    
+
     if light_mode == -1:
         light_events[light_mode] = threading.Event()
         thread = threading.Thread(target=blink, kwargs={'blink_times':10, 'color':(100, 0, 0)})
         thread.start()
-        
+
     if light_mode == 0:
         Blinker.start()
         front_light(on = True)
@@ -359,33 +283,16 @@ def change_mode(mode = "toggle"):
         light_events[light_mode] = None
     else:
         Blinker.stop()
- 
+
     if light_mode == 1:
         Battery.start()
         light_thread = None
         light_events[light_mode] = None
     else:
-        Battery.stop()     
-        
+        Battery.stop()
+
     if light_mode == 10:
         l.write(IR, 1)
     else:
         l.write(IR, 0)
 
-
-
-if __name__ == "__main__":
-    # Clear all the pixels to turn them off.
-    Pixels.clear()
-    Pixels.show()  # Make sure to call show() after changing any pixels!
- 
-    #rainbow_cycle_successive(Pixels, wait=0.1)
-    #rainbow_cycle(Pixels, wait=0.01)
-    #appear_from_back_blocking(Pixels, step = 2)
-    #blink(Pixels, blink_times = 3, color=(255, 0, 0))
-    #blink(Pixels, blink_times = 3, color=(0, 255, 0))
-    #blink(Pixels, blink_times = 3, color=(0, 0, 255))
-    #rainbow_colors(Pixels)
-    #brightness_decrease(Pixels)
-    for i in range(10):
-        spin(step = i+1, wait = 0.05)
