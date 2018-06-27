@@ -178,9 +178,10 @@ class battery():
             self.pixels.clear()
             if not self.toggle_off:
                 percent = int(float(Data) / type(self.BattSenCharge).MAX_CHARGE * 100)
-                activatedPixels =  int(percent * self.pixels.count() / 100)
-                for pixel in range(activatedPixels):
-                    self.pixels.set_pixel_rgb(pixel, 256 - 2 * percent, percent, 0)
+                activatedPixels =  int(percent * self.pixels.count() / 100) + 1
+                if activatedPixels in range(0, self.pixels.count() + 1):
+                    for pixel in range(activatedPixels):
+                        self.pixels.set_pixel_rgb(pixel, 256 - 2 * percent, percent, 0)
                 if self.Blink:
                     self.toggle_off = True
             else:

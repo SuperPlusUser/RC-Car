@@ -664,7 +664,7 @@ class Sonar_Sensor_Rear(Sensor):
 class DS18B20_1(Sensor):
     NAME = "Motor-Temp."
     UNIT = "°C"
-    REFRESH_TIME = 30
+    REFRESH_TIME = 20
 
     SLAVE_NAME = "10-000802015d01"
 
@@ -691,22 +691,26 @@ class DS18B20_1(Sensor):
 class DHT22_Temp(Sensor):
     NAME = "Aussen-Temp"
     UNIT = "°C"
-    REFRESH_TIME = 45
+    REFRESH_TIME = 14
     
     sensor = Adafruit_DHT.DHT22
     gpio = 6
     
     @classmethod
     def ReadSensorData(cls):
-        humidity, temperature = Adafruit_DHT.read_retry(cls.sensor, cls.gpio)
+        humidity, temperature = Adafruit_DHT.read(cls.sensor, cls.gpio)
         # DHT22_Hum wird hier gleich mit aktualisiert
-        DHT22_Hum.SensorData = float("{0:0.1f}".format(humidity))
+        if temperature == None: 
+            print("ERROR: Could not read Data from DHT22")
+            return cls.SensorData
+        if humidity != None:
+            DHT22_Hum.SensorData = float("{0:0.1f}".format(humidity))
         return float("{0:0.1f}".format(temperature))
     
 class DHT22_Hum(Sensor):
     NAME = "Luftfeuchtigkeit"
     UNIT = "%"
-    REFRESH_TIME = 45 # Der Sensor wird eigentlich durch die Klasse DHT22_Temp mit aktualisiert,
+    REFRESH_TIME = 14 # Der Sensor wird eigentlich durch die Klasse DHT22_Temp mit aktualisiert,
     # die Refresh-Time muss hier nur als Default-Subscribe-Zeit angegeben werden.
     
     @classmethod
@@ -719,7 +723,7 @@ bmp = Adafruit_BMP.BMP085.BMP085()
 class BMP085_Pressure(Sensor):
     NAME = "Luftdruck"
     UNIT = "hPa"
-    REFRESH_TIME = 60
+    REFRESH_TIME = 42
     
     @classmethod
     def ReadSensorData(cls):
@@ -730,7 +734,7 @@ class BMP085_Pressure(Sensor):
 class BMP_Altitude(Sensor):
     NAME = "Hoehe"
     UNIT = "m"
-    REFRESH_TIME = 60
+    REFRESH_TIME = 42
     
     sealevel_pa=101325.0
     
