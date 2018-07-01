@@ -20,15 +20,15 @@ SPI_PORT   = 0
 SPI_DEVICE = 0
 Pixels = Adafruit_WS2801.WS2801Pixels(PIXEL_COUNT, spi=SPI.SpiDev(SPI_PORT, SPI_DEVICE), gpio=GPIO)
 
-BLINK_RIGHT = (3, 4, 5)
-BLINK_LEFT = (34, 35, 36)
+BLINK_RIGHT = (3, 4, 5, 15)
+BLINK_LEFT = (34, 35, 36, 24)
 
 BRAKE_LIGHT = (17, 18, 21, 22)
 FRONT_LIGHT = (0, 1, 2, 37, 38, 39)
-BACK_LICHT = (16, 23)
+BACK_LIGHT = (16, 23)
 REVERSE_LIGHT = (19, 20)
 
-light_modes = (-1,0,1,10)
+light_modes = (-1,0,1,2,10)
 light_mode = 0
 light_events = {}
 for mode in light_modes:
@@ -79,7 +79,33 @@ def appear_from_back_blocking(pixels = Pixels, color="changing", step = 1, wait 
             pixels.show()
             time.sleep(wait)
 
- 
+
+# Define rainbow cycle function to do a cycle of all hues.
+def rainbow_cycle_successive(pixels = Pixels, wait=0.1):
+    current_light_mode = light_mode
+    for i in range(pixels.count()):
+        # tricky math! we use each pixel as a fraction of the full 96-color wheel
+        # (thats the i / strip.numPixels() part)
+        # Then add in j which makes the colors go around per pixel
+        # the % 96 is to make the wheel cycle around
+        pixels.set_pixel(i, wheel(((i * 256 // pixels.count())) % 256) )
+        pixels.show()
+        if light_events[current_light_mode].wait(timeout = wait):
+            return
+
+
+def rainbow_cycle(pixels = Pixels, wait=0.005):
+    current_light_mode = light_mode
+    rainbow_cycle_successive()
+    while not light_events[current_light_mode].wait(timeout = wait):
+        for j in range(256): # one cycle of all 256 colors in the wheel
+            for i in range(pixels.count()):
+                pixels.set_pixel(i, wheel(((i * 256 // pixels.count()) + j) % 256) )
+            pixels.show()
+            if light_events[current_light_mode].wait(timeout = wait):
+                return
+
+
 def blink(pixels = Pixels, blink_range = range(Pixels.count()), blink_delay = 0.5, color = (255, 50, 0), blink_times = 1):
     blink_counter = 0
     current_light_mode = light_mode
@@ -104,7 +130,7 @@ def blink(pixels = Pixels, blink_range = range(Pixels.count()), blink_delay = 0.
 # -------------- 
 # --- MODE 0 ---
 # --------------
-def front_light(on = "toggle", area = FRONT_LIGHT, area_back = BACK_LICHT, pixels = Pixels, color = (255, 120, 100), color_back = (90, 0, 0)):
+def front_light(on = "toggle", area = FRONT_LIGHT, area_back = BACK_LIGHT, pixels = Pixels, color = (255, 120, 100), color_back = (90, 0, 0)):
     if light_mode == 0:
         global front_light_on
         if on == "toggle":
@@ -291,6 +317,11 @@ def change_mode(mode = "toggle"):
         light_events[light_mode] = None
     else:
         Battery.stop()
+
+    if light_mode == 2:
+        light_events[light_mode] = threading.Event()
+        thread = threading.Thread(target=rainbow_cycle)
+        thread.start()
 
     if light_mode == 10:
         l.write(IR, 1)
