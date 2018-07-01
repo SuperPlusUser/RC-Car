@@ -56,21 +56,18 @@
 # - Display eingabaut, welches bei Tastendruck die naechsten Sensordaten anzeigt
 #
 
-## TODO:
-# - Severity bei Alerts einbauen!
-
 
 import time
 import sys
 from concurrent.futures import ThreadPoolExecutor
-executor = ThreadPoolExecutor(max_workers = 8) # max_workers erhoehen bei Problemen?
+executor = ThreadPoolExecutor(max_workers = 4)
 import pigpio
 import subprocess
 import asyncio
 import serial
 import sonar
 import lcd
-import Adafruit_DHT
+import DHT22
 import Adafruit_BMP.BMP085
 
 import Steuerung
@@ -153,6 +150,7 @@ def close():
     Sonar_Sensor_Front.son.cancel()
     Sonar_Sensor_Rear.son.cancel()
     pi.set_PWM_dutycycle(BUZZER_PIN, 0)
+    DHT22_Temp.dht22.cancel()
     pi.stop()
 
 def PrintSensorData(Sensor, Data, Unit):
@@ -538,7 +536,7 @@ class IP_Addr(Sensor):
 
 class Sonar_Sensor_Front(Sensor):
     NAME = "Distance Front"
-    REFRESH_TIME = 0.5
+    REFRESH_TIME = 0.4
     UNIT = "cm"
 
     SONAR_TRIGGER = 19
@@ -664,7 +662,7 @@ class Sonar_Sensor_Rear(Sensor):
 class DS18B20_1(Sensor):
     NAME = "Motor-Temp."
     UNIT = "°C"
-    REFRESH_TIME = 20
+    REFRESH_TIME = 14
 
     SLAVE_NAME = "10-000802015d01"
 
@@ -688,34 +686,31 @@ class DS18B20_1(Sensor):
         else:
             return False
 
+
+# --- DHT22 ---
 class DHT22_Temp(Sensor):
     NAME = "Aussen-Temp"
     UNIT = "°C"
-    REFRESH_TIME = 14
-    
-    sensor = Adafruit_DHT.DHT22
+    REFRESH_TIME = 20
+
     gpio = 6
-    
+    dht22 = DHT22.sensor(pi, gpio)
+
     @classmethod
     def ReadSensorData(cls):
-        humidity, temperature = Adafruit_DHT.read(cls.sensor, cls.gpio)
-        # DHT22_Hum wird hier gleich mit aktualisiert
-        if temperature == None: 
-            print("ERROR: Could not read Data from DHT22")
-            return cls.SensorData
-        if humidity != None:
-            DHT22_Hum.SensorData = float("{0:0.1f}".format(humidity))
-        return float("{0:0.1f}".format(temperature))
+        cls.dht22.trigger()
+        time.sleep(0.2)
+        return float("{0:0.1f}".format(cls.dht22.temperature()))
     
 class DHT22_Hum(Sensor):
     NAME = "Luftfeuchtigkeit"
     UNIT = "%"
-    REFRESH_TIME = 14 # Der Sensor wird eigentlich durch die Klasse DHT22_Temp mit aktualisiert,
+    REFRESH_TIME = 20 # Der Sensor wird eigentlich durch die Klasse DHT22_Temp mit aktualisiert,
     # die Refresh-Time muss hier nur als Default-Subscribe-Zeit angegeben werden.
     
     @classmethod
     def ReadSensorData(cls):
-        return cls.SensorData # wird durch DHT22_Temp festgelegt
+        return float("{0:0.1f}".format(DHT22_Temp.dht22.humidity()))
 
 # --- BMP058 ---
 bmp = Adafruit_BMP.BMP085.BMP085()
@@ -723,7 +718,7 @@ bmp = Adafruit_BMP.BMP085.BMP085()
 class BMP085_Pressure(Sensor):
     NAME = "Luftdruck"
     UNIT = "hPa"
-    REFRESH_TIME = 42
+    REFRESH_TIME = 25
     
     @classmethod
     def ReadSensorData(cls):
@@ -734,7 +729,7 @@ class BMP085_Pressure(Sensor):
 class BMP_Altitude(Sensor):
     NAME = "Hoehe"
     UNIT = "m"
-    REFRESH_TIME = 42
+    REFRESH_TIME = 25
     
     sealevel_pa=101325.0
     

@@ -25,14 +25,16 @@ import time
 import sys
 import os               # wird verwendet, um pigpiod automatisch zu starten
 import subprocess
-from concurrent.futures import ThreadPoolExecutor
+import threading
 import xbox_modified as xbox
 import pigpio
 # Verwendung: http://abyz.me.uk/rpi/pigpio/python.html#set_servo_pulsewidth
 # Beachten: bevor mittels l = pigpio.pi() eine Instanz der pigpio.pi Klasse
 # erstellt werden kann, muss der Daemon "pigpiod" mittels "sudo pigpiod" gestartet werden!
 
-import light
+EN_LIGHT = True
+if EN_LIGHT:
+    import light
 
 
 
@@ -57,8 +59,8 @@ _MAX_PW = 2250   # max Impulsdauer in us (Falsche Werte koennen zu Beschaedigung
 # Einschraenkung des Bewegungsradiuses (in Prozent):
 # Die Werte ergeben sich durch den eingeschraenkten Lenkradius der Lenkmechanik.
 # Falsche Werte koennen zu Beschaedigungen fuehren!
-_RL = 33 # rechtes Limit in Prozent !MUSS kleiner als _LL sein
-_LL = 72 # linkes Limit in Prozent !MUSS groeßer als _RL sein
+_RL = 0 # rechtes Limit in Prozent !MUSS kleiner als _LL sein
+_LL = 33 # linkes Limit in Prozent !MUSS groeßer als _RL sein
 
 # --- Motor ---
 PWM_FREQ = 50               # PWM-Frequenz
@@ -152,8 +154,9 @@ def forward(speed):
     v.write(IN2, 1)
     if DEBUG:
         print("Driving forward with speed {} ...".format(int(speed * _Limit_F)))
-    light.brake_light(0)
-    light.reverse_light(0)
+    if EN_LIGHT:
+        light.brake_light(0)
+        light.reverse_light(0)
     # Geschwindigkeit ueber PWM festlegen:
     return v.set_PWM_dutycycle(EN,int(speed * _Limit_F))   
 
@@ -168,16 +171,18 @@ def backward(speed):
     v.write(IN2, 0)
     if DEBUG:
         print("Driving backward with speed {} ...".format(int(speed * _Limit_B)))
-    light.brake_light(0)
-    light.reverse_light(1)
+    if EN_LIGHT:
+        light.brake_light(0)
+        light.reverse_light(1)
     # Geschwindigkeit ueber PWM festlegen:
     return v.set_PWM_dutycycle(EN,int(speed * _Limit_B))
 
 
 def roll():
     if DEBUG: print("let vehicle roll free")
-    light.brake_light(0)
-    light.reverse_light(0)
+    if EN_LIGHT:
+        light.brake_light(0)
+        light.reverse_light(0)
     return v.set_PWM_dutycycle(EN,0)
 
 def brake():
@@ -187,8 +192,9 @@ def brake():
     v.write(IN1, 1)
     v.write(IN2, 1)
     if DEBUG: print("Braking vehicle")
-    light.brake_light(1)
-    light.reverse_light(0)
+    if EN_LIGHT:
+        light.brake_light(1)
+        light.reverse_light(0)
     return v.set_PWM_dutycycle(EN,PWM_RANGE)
 
 def get_speed():
@@ -267,16 +273,13 @@ def close():
     """
     global EN_XBOX_CONTROLLER
     roll()
-    disable_ir()
     v.stop()
     disable_steering()
     l.stop()
-    light.Pixels.clear()
-    light.Pixels.show()
-    if EN_XBOX_CONTROLLER:
-        EN_XBOX_CONTROLLER = False
-        #if executor:
-        #    executor.shutdown()
+    if EN_LIGHT:
+        light.Pixels.clear()
+        light.Pixels.show()
+    EN_XBOX_CONTROLLER = False
 
 
 # --------------
@@ -358,11 +361,11 @@ def control_with_joystick():
                 steer((-1+joy.leftX())*-50)
                 
                 #Licht an/aus
-                if joy.dpadUp():
+                if EN_LIGHT and joy.dpadUp():
                     light.front_light(on = "toggle")
                     
                 #change Light Mode
-                if joy.dpadDown():
+                if EN_LIGHT and joy.dpadDown():
                     light.change_mode(mode = "toggle")
                 
                 # Raspberry Pi herunterfahren mit Start und Back:
@@ -458,5 +461,5 @@ if __name__ == "__main__":
 else:
     # Steuerung mit xbox controller in eigenem Thread:
     if EN_XBOX_CONTROLLER:
-        executor = ThreadPoolExecutor(max_workers=2)
-        controller_future = executor.submit(control_with_joystick)
+        controller_thread = threading.Thread(target=control_with_joystick)
+        controller_thread.start()

@@ -1,7 +1,7 @@
 #!/bin/bash
 pkill -f Socket.py # Terminate Socket.py
-sleep 8            # give Socket some time to clean up...
+sleep 5            # give Socket some time to clean up...
 pkill -f Socket.py # Terminate Socket.py
-sleep 2
+sleep 1
 sudo shutdown now  # shutdown pi
 

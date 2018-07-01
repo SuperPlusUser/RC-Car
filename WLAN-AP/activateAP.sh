@@ -1,3 +1,5 @@
+cd /home/pi/RC-Car/WLAN-AP
+
 sudo systemctl stop dhcpcd.service
 sudo systemctl stop wpa_supplicant.service
 

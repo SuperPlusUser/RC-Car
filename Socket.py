@@ -227,7 +227,7 @@ class SRCCP(asyncio.Protocol):
 
                         elif command == "shutdown":
                             print("calling shutdown.sh and shutting down pi...")
-                            subprocess.call("/home/pi/RC-Car/.sh", shell = True)
+                            subprocess.call("/home/pi/RC-Car/shutdown.sh", shell = True)
 
                         elif command == "reboot":
                             print("calling reboot.sh and rebooting pi...")
@@ -361,10 +361,10 @@ class SRCCP(asyncio.Protocol):
             # Subscribe:
             if refreshtime:
                 if DEBUG: print("Host {} subscribes Sensor '{}' with refresh time {}\n".format(self.peername, sensor, refreshtime))
-                self.subscribedSensors[sensor].subscribe(self.SendMsg, True, refreshtime)
+                self.subscribedSensors[sensor].subscribe(self.SendMsg, OnlyNew = False, time = refreshtime) # Geaendert: Alle werte publishen, nicht nur neue!
             else:
                 if DEBUG: print("Host {} subscribes Sensor '{}' with default refresh time\n".format(self.peername, sensor))
-                self.subscribedSensors[sensor].subscribe(self.SendMsg)
+                self.subscribedSensors[sensor].subscribe(self.SendMsg, OnlyNew = False)
         
         except KeyError:
             print("ERROR: Unknown sensor '{}'".format(sensor))
@@ -441,7 +441,7 @@ if "-a" in sys.argv:
     loop.run_until_complete(lcd.printString("Starting Socket-", lcd.line1))
     loop.run_until_complete(lcd.printString("Server ...", lcd.line2))
     # Warte-Animation:
-    light.appear_from_back_blocking(step = 1)
+    light.appear_from_back_blocking(step = 2, wait = 0.04)
 
 # Each client connection will create a new protocol instance
 coro = loop.create_server(SRCCP, IP, PORT)

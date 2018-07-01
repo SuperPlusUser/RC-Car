@@ -1,3 +1,5 @@
+cd /home/pi/RC-Car/WLAN-AP
+
 sudo systemctl stop hostapd.service
 sudo systemctl stop dnsmasq.service
 sudo systemctl stop dhcpcd.service
